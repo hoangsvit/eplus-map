@@ -1,6 +1,7 @@
 .screen {
   width: 100%;
-  height: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
   position: relative;
   background: #f8fafc;
   overflow: hidden;
@@ -36,13 +37,15 @@
   z-index: 20;
   left: 50%;
   transform: translateX(-50%);
-  width: min(680px, calc(100% - 20px));
+  width: min(520px, calc(100% - 18px));
   top: max(12px, env(safe-area-inset-top));
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(2px);
-  border-radius: 16px;
-  padding: 10px;
+  border-radius: 14px;
+  padding: 8px;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  max-height: 44dvh;
+  overflow: auto;
 }
 
 .top-search input,
@@ -51,8 +54,8 @@
   border: 1px solid #d4d4d8;
   background: #fff;
   border-radius: 16px;
-  padding: 11px 14px;
-  font-size: 15px;
+  padding: 10px 12px;
+  font-size: 14px;
   outline: none;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
@@ -70,7 +73,7 @@
   border-radius: 999px;
   padding: 8px 11px;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .hint {
@@ -163,8 +166,8 @@
   border: 1px solid #d1d5db;
   border-radius: 999px;
   background: #fff;
-  padding: 8px 6px;
-  font-size: 20px;
+  padding: 7px 5px;
+  font-size: 18px;
 }
 
 .vehicle-tabs button.active {
@@ -181,15 +184,15 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  width: min(700px, 100%);
+  width: min(520px, 100%);
   bottom: 0;
   z-index: 20;
   background: #fff;
-  border-top-left-radius: 20px;
-  border-top-right-radius: 20px;
-  padding: 16px 16px 24px;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  padding: 12px 14px calc(16px + env(safe-area-inset-bottom));
   box-shadow: 0 -8px 20px rgba(15, 23, 42, 0.1);
-  max-height: 46%;
+  max-height: 34dvh;
   overflow: auto;
 }
 
@@ -217,6 +220,10 @@
   display: flex;
   gap: 12px;
   margin-top: 16px;
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  padding-top: 8px;
 }
 
 .actions button {
@@ -264,16 +271,25 @@
   .top-search,
   .route-header {
     top: 16px;
-    width: min(560px, calc(100% - 24px));
+    width: min(500px, calc(100% - 24px));
   }
 
   .bottom-card {
-    width: min(560px, 100%);
-    max-height: 50%;
+    width: min(500px, 100%);
+    max-height: 36dvh;
   }
 }
 
 @media (max-width: 480px) {
+  .top-search,
+  .route-header {
+    max-height: 42dvh;
+  }
+
+  .bottom-card {
+    max-height: 36dvh;
+  }
+
   .vehicle-tabs {
     gap: 6px;
   }

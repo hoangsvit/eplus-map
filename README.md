@@ -10,13 +10,11 @@ npm install
 
 ## 2) Cấu hình API key
 
-Mở `src/App.jsx` và thay:
+Tạo file `.env`:
 
-```js
-const API_KEY = 'YOUR_API_KEY'
+```env
+VITE_VIETMAP_API_KEY=YOUR_API_KEY
 ```
-
-bằng API key VietMap của bạn.
 
 ## 3) Chạy local
 

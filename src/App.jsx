@@ -6,18 +6,6 @@ import './App.css'
 const DEFAULT_CENTER = [106.70098, 10.77689]
 const ROUTE_SOURCE_ID = 'route-source'
 const ROUTE_LAYER_ID = 'route-layer'
-const API_KEY = 'YOUR_API_KEY'
-
-function parseLatLng(value) {
-  const [latRaw, lngRaw] = value.split(',').map((part) => part.trim())
-  const lat = Number(latRaw)
-  const lng = Number(lngRaw)
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null
-
-  return { lat, lng }
-}
 
 function toLngLat(point) {
   if (!Array.isArray(point) || point.length < 2) return null
@@ -55,17 +43,23 @@ export default function App() {
   const startMarkerRef = useRef(null)
   const endMarkerRef = useRef(null)
 
-  const [startInput, setStartInput] = useState('10.77689,106.70098')
-  const [endInput, setEndInput] = useState('10.762622,106.660172')
+  const [startInput, setStartInput] = useState('')
+  const [endInput, setEndInput] = useState('')
+  const [activeField, setActiveField] = useState('start')
+  const [suggestions, setSuggestions] = useState([])
+  const [selectedStart, setSelectedStart] = useState(null)
+  const [selectedEnd, setSelectedEnd] = useState(null)
   const [vehicle, setVehicle] = useState('car')
   const [isLoading, setIsLoading] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState('')
   const [routeInfo, setRouteInfo] = useState(null)
   const [instructions, setInstructions] = useState([])
 
+  const apiKey = useMemo(() => import.meta.env.VITE_VIETMAP_API_KEY || '', [])
   const styleUrl = useMemo(
-    () => `https://maps.vietmap.vn/maps/styles/tm/style.json?apikey=${API_KEY}`,
-    [],
+    () => `https://maps.vietmap.vn/maps/styles/tm/style.json?apikey=${apiKey}`,
+    [apiKey],
   )
 
   useEffect(() => {
@@ -88,6 +82,57 @@ export default function App() {
       mapRef.current = null
     }
   }, [styleUrl])
+
+  useEffect(() => {
+    if (!apiKey) {
+      setSuggestions([])
+      return
+    }
+
+    const searchText = (activeField === 'start' ? startInput : endInput).trim()
+    if (searchText.length < 2) {
+      setSuggestions([])
+      return
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(async () => {
+      try {
+        setIsSearching(true)
+        const center = mapRef.current?.getCenter()
+        const focus = center ? `${center.lat},${center.lng}` : `${DEFAULT_CENTER[1]},${DEFAULT_CENTER[0]}`
+
+        const params = new URLSearchParams({
+          apikey: apiKey,
+          text: searchText,
+          focus,
+          display_type: '5',
+        })
+
+        const response = await fetch(`https://maps.vietmap.vn/api/autocomplete/v4?${params.toString()}`, {
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          throw new Error('Không tải được gợi ý tìm kiếm.')
+        }
+        const data = await response.json()
+        setSuggestions(Array.isArray(data) ? data : [])
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setSuggestions([])
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false)
+        }
+      }
+    }, 300)
+
+    return () => {
+      controller.abort()
+      clearTimeout(timeout)
+    }
+  }, [activeField, apiKey, endInput, startInput])
 
   const removeRouteLayer = () => {
     const map = mapRef.current
@@ -144,12 +189,59 @@ export default function App() {
     }
   }
 
-  const handleFindRoute = async () => {
-    const start = parseLatLng(startInput)
-    const end = parseLatLng(endInput)
+  const handleSelectSuggestion = async (item, field) => {
+    if (!apiKey || !item?.ref_id) return
 
-    if (!start || !end) {
-      setError('Tọa độ không hợp lệ. Định dạng đúng: latitude,longitude')
+    try {
+      setError('')
+      const params = new URLSearchParams({
+        apikey: apiKey,
+        refid: item.ref_id,
+      })
+      const response = await fetch(`https://maps.vietmap.vn/api/place/v4?${params.toString()}`)
+      if (!response.ok) {
+        throw new Error('Không lấy được chi tiết địa điểm.')
+      }
+
+      const place = await response.json()
+      if (typeof place?.lat !== 'number' || typeof place?.lng !== 'number') {
+        throw new Error('Địa điểm không có tọa độ hợp lệ.')
+      }
+
+      const selected = {
+        lat: place.lat,
+        lng: place.lng,
+        display: place.display || item.display || item.name || '',
+      }
+
+      if (field === 'start') {
+        setSelectedStart(selected)
+        setStartInput(selected.display)
+        setMarker(startMarkerRef, [selected.lng, selected.lat], '#16a34a')
+      } else {
+        setSelectedEnd(selected)
+        setEndInput(selected.display)
+        setMarker(endMarkerRef, [selected.lng, selected.lat], '#dc2626')
+      }
+
+      mapRef.current?.flyTo({
+        center: [selected.lng, selected.lat],
+        zoom: 15,
+        essential: true,
+      })
+
+      setSuggestions([])
+      setRouteInfo(null)
+      setInstructions([])
+      removeRouteLayer()
+    } catch (err) {
+      setError(err.message || 'Không thể chọn địa điểm.')
+    }
+  }
+
+  const handleFindRoute = async () => {
+    if (!selectedStart || !selectedEnd) {
+      setError('Vui lòng chọn đầy đủ điểm bắt đầu và điểm kết thúc từ thanh search.')
       return
     }
 
@@ -161,12 +253,12 @@ export default function App() {
     try {
       const params = new URLSearchParams({
         'api-version': '1.1',
-        apikey: API_KEY,
+        apikey: apiKey,
         vehicle,
         points_encoded: 'false',
       })
-      params.append('point', `${start.lat},${start.lng}`)
-      params.append('point', `${end.lat},${end.lng}`)
+      params.append('point', `${selectedStart.lat},${selectedStart.lng}`)
+      params.append('point', `${selectedEnd.lat},${selectedEnd.lng}`)
 
       const response = await fetch(`https://maps.vietmap.vn/api/route?${params.toString()}`)
       if (!response.ok) {
@@ -185,8 +277,8 @@ export default function App() {
       }
 
       drawRoute(coordinates)
-      setMarker(startMarkerRef, [start.lng, start.lat], '#16a34a')
-      setMarker(endMarkerRef, [end.lng, end.lat], '#dc2626')
+      setMarker(startMarkerRef, [selectedStart.lng, selectedStart.lat], '#16a34a')
+      setMarker(endMarkerRef, [selectedEnd.lng, selectedEnd.lat], '#dc2626')
 
       setRouteInfo({
         distanceKm: (path.distance / 1000).toFixed(2),
@@ -206,21 +298,55 @@ export default function App() {
       <aside className="panel">
         <h1>VietMap Route Demo</h1>
 
-        <label htmlFor="start">Điểm bắt đầu (latitude,longitude)</label>
+        <label htmlFor="start">Điểm bắt đầu</label>
         <input
           id="start"
           value={startInput}
-          onChange={(e) => setStartInput(e.target.value)}
-          placeholder="10.77689,106.70098"
+          onFocus={() => setActiveField('start')}
+          onChange={(e) => {
+            setActiveField('start')
+            setStartInput(e.target.value)
+            setSelectedStart(null)
+          }}
+          placeholder="Tìm địa chỉ/địa điểm bắt đầu..."
         />
+        {activeField === 'start' && suggestions.length > 0 && (
+          <ul className="suggestions">
+            {suggestions.map((item) => (
+              <li key={`start-${item.ref_id}`}>
+                <button type="button" onClick={() => handleSelectSuggestion(item, 'start')}>
+                  <strong>{item.name || item.display}</strong>
+                  <span>{item.address}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
-        <label htmlFor="end">Điểm kết thúc (latitude,longitude)</label>
+        <label htmlFor="end">Điểm kết thúc</label>
         <input
           id="end"
           value={endInput}
-          onChange={(e) => setEndInput(e.target.value)}
-          placeholder="10.762622,106.660172"
+          onFocus={() => setActiveField('end')}
+          onChange={(e) => {
+            setActiveField('end')
+            setEndInput(e.target.value)
+            setSelectedEnd(null)
+          }}
+          placeholder="Tìm địa chỉ/địa điểm kết thúc..."
         />
+        {activeField === 'end' && suggestions.length > 0 && (
+          <ul className="suggestions">
+            {suggestions.map((item) => (
+              <li key={`end-${item.ref_id}`}>
+                <button type="button" onClick={() => handleSelectSuggestion(item, 'end')}>
+                  <strong>{item.name || item.display}</strong>
+                  <span>{item.address}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <label htmlFor="vehicle">Phương tiện</label>
         <select id="vehicle" value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
@@ -234,6 +360,8 @@ export default function App() {
           {isLoading ? 'Đang tìm...' : 'Tìm đường'}
         </button>
 
+        {!apiKey && <p className="error">Thiếu biến môi trường VITE_VIETMAP_API_KEY.</p>}
+        {isSearching && <p className="searching">Đang tải gợi ý địa điểm...</p>}
         {error && <p className="error">{error}</p>}
 
         {routeInfo && (

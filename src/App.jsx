@@ -335,8 +335,9 @@ export default function App() {
       setInstructions(Array.isArray(path.instructions) ? path.instructions : [])
       if (vehicle === 'car') {
         try {
+          // Theo tài liệu route-tolls: truyền body là mảng [lng, lat] và vehicle=5 cho ô tô.
           const tollsResponse = await fetch(
-            `https://maps.vietmap.vn/api/route-tolls?api-version=1.1&apikey=${apiKey}&vehicle=1`,
+            `https://maps.vietmap.vn/api/route-tolls?apikey=${apiKey}&vehicle=5`,
             {
               method: 'POST',
               headers: {

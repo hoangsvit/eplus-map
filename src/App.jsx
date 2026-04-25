@@ -81,6 +81,84 @@ export default function App() {
     })
   }
 
+  const decodePolyline = (encoded) => {
+    if (!encoded || typeof encoded !== 'string') return []
+
+    let index = 0
+    let lat = 0
+    let lng = 0
+    const coordinates = []
+
+    while (index < encoded.length) {
+      let shift = 0
+      let result = 0
+      let byte = null
+
+      do {
+        byte = encoded.charCodeAt(index++) - 63
+        result |= (byte & 0x1f) << shift
+        shift += 5
+      } while (byte >= 0x20)
+
+      const deltaLat = result & 1 ? ~(result >> 1) : result >> 1
+      lat += deltaLat
+
+      shift = 0
+      result = 0
+      do {
+        byte = encoded.charCodeAt(index++) - 63
+        result |= (byte & 0x1f) << shift
+        shift += 5
+      } while (byte >= 0x20)
+
+      const deltaLng = result & 1 ? ~(result >> 1) : result >> 1
+      lng += deltaLng
+
+      coordinates.push([lng / 1e5, lat / 1e5])
+    }
+
+    return coordinates
+  }
+
+  const normalizePoint = (point) => {
+    if (!Array.isArray(point) || point.length < 2) return null
+
+    const first = Number(point[0])
+    const second = Number(point[1])
+
+    if (Number.isNaN(first) || Number.isNaN(second)) return null
+
+    // Vietmap docs mention [lat,lng] for points_encoded=false.
+    if (Math.abs(first) <= 90 && Math.abs(second) <= 180) {
+      return [second, first]
+    }
+
+    // Fallback for [lng,lat]-formatted points.
+    if (Math.abs(first) <= 180 && Math.abs(second) <= 90) {
+      return [first, second]
+    }
+
+    return null
+  }
+
+  const extractRouteCoordinates = (route) => {
+    if (!route) return []
+
+    if (Array.isArray(route.points)) {
+      return route.points.map(normalizePoint).filter(Boolean)
+    }
+
+    if (Array.isArray(route.points?.coordinates)) {
+      return route.points.coordinates.map(normalizePoint).filter(Boolean)
+    }
+
+    if (typeof route.points === 'string') {
+      return decodePolyline(route.points)
+    }
+
+    return []
+  }
+
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return
 
@@ -266,11 +344,7 @@ export default function App() {
         throw new Error('Không tìm thấy lộ trình phù hợp.')
       }
 
-      const coordinates = Array.isArray(route.points)
-        ? route.points
-            .filter((point) => Array.isArray(point) && point.length >= 2)
-            .map((point) => [point[1], point[0]])
-        : []
+      const coordinates = extractRouteCoordinates(route)
 
       if (coordinates.length < 2) {
         throw new Error('Dữ liệu tuyến đường không hợp lệ.')

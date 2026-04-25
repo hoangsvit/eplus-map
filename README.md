@@ -1,6 +1,6 @@
-# Vietmap React + Tailwind
+# VietMap Route Demo (React + Vite)
 
-Trang demo bản đồ Vietmap dựng bằng **React + Vite + Tailwind CSS**.
+Demo tối giản dùng **VietMap SDK Web GL chính thức** và **VietMap Route API**.
 
 ## 1) Cài đặt
 
@@ -10,15 +10,13 @@ npm install
 
 ## 2) Cấu hình API key
 
-```bash
-cp .env.example .env
+Mở `src/App.jsx` và thay:
+
+```js
+const API_KEY = 'YOUR_API_KEY'
 ```
 
-Sửa `.env`:
-
-```env
-VITE_VIETMAP_API_KEY=your_real_api_key
-```
+bằng API key VietMap của bạn.
 
 ## 3) Chạy local
 

@@ -58,6 +58,7 @@ export default function App() {
   const [isRouting, setIsRouting] = useState(false)
   const [routeInfo, setRouteInfo] = useState(null)
   const [instructions, setInstructions] = useState([])
+  const [tolls, setTolls] = useState([])
   const [showSteps, setShowSteps] = useState(false)
   const [error, setError] = useState('')
 
@@ -265,6 +266,7 @@ export default function App() {
     if (!selectedStart || !selectedEnd) {
       setRouteInfo(null)
       setInstructions([])
+      setTolls([])
       removeRouteLayer()
       return
     }
@@ -296,12 +298,35 @@ export default function App() {
         durationMin: Math.round(path.time / 60000),
       })
       setInstructions(Array.isArray(path.instructions) ? path.instructions : [])
+      if (vehicle === 'car') {
+        const tollsResponse = await fetch(
+          `https://maps.vietmap.vn/api/route-tolls?api-version=1.1&apikey=${apiKey}&vehicle=1`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(
+              coordinates.map((coord) => [coord[0], coord[1]]), // [lng, lat]
+            ),
+          },
+        )
+        if (tollsResponse.ok) {
+          const tollData = await tollsResponse.json()
+          setTolls(Array.isArray(tollData?.tolls) ? tollData.tolls : [])
+        } else {
+          setTolls([])
+        }
+      } else {
+        setTolls([])
+      }
       setShowSteps(false)
       setIsSuggestOpen(false)
     } catch (err) {
       setError(err.message || 'Không thể tìm đường.')
       setRouteInfo(null)
       setInstructions([])
+      setTolls([])
     } finally {
       setIsRouting(false)
     }
@@ -448,6 +473,14 @@ export default function App() {
             {routeInfo.durationMin} phút <span>({routeInfo.distanceKm} km)</span>
           </h3>
           <p>Tuyến đường tốt nhất</p>
+          {vehicle === 'car' && (
+            <p className="toll-summary">
+              Phí cao tốc:{' '}
+              <strong>
+                {tolls.reduce((sum, item) => sum + Number(item?.amount || 0), 0).toLocaleString('vi-VN')} đ
+              </strong>
+            </p>
+          )}
           <div className="actions">
             <button type="button" onClick={() => setShowSteps((prev) => !prev)}>
               {showSteps ? 'Ẩn chặng' : 'Các chặng'}
@@ -458,6 +491,16 @@ export default function App() {
           </div>
           {showSteps && (
             <div className="steps">
+              {vehicle === 'car' && tolls.length > 0 && (
+                <div className="step toll-step">
+                  <strong>Các trạm thu phí</strong>
+                  {tolls.map((item, idx) => (
+                    <span key={`${item?.name || 'toll'}-${idx}`}>
+                      {item?.name}: {Number(item?.amount || 0).toLocaleString('vi-VN')} đ
+                    </span>
+                  ))}
+                </div>
+              )}
               {instructions.slice(0, 8).map((step, index) => (
                 <div key={`${index}-${step?.text || ''}`} className="step">
                   <strong>{step?.text || 'Đi tiếp'}</strong>

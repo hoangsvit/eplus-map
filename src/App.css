@@ -208,6 +208,11 @@
   color: #475569;
 }
 
+.toll-summary {
+  margin-top: 6px !important;
+  color: #0f172a !important;
+}
+
 .actions {
   display: flex;
   gap: 12px;
@@ -248,6 +253,11 @@
 .step span {
   color: #64748b;
   font-size: 13px;
+}
+
+.toll-step span {
+  display: block;
+  margin-top: 4px;
 }
 
 @media (min-width: 900px) {

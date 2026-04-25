@@ -1,0 +1,279 @@
+.screen {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #f8fafc;
+  overflow: hidden;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.floating-error {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 50;
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.floating-error.second {
+  top: 64px;
+}
+
+.top-search,
+.route-header {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(680px, calc(100% - 20px));
+  top: max(12px, env(safe-area-inset-top));
+}
+
+.top-search input,
+.route-inputs input {
+  width: 100%;
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  border-radius: 16px;
+  padding: 11px 14px;
+  font-size: 15px;
+  outline: none;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow: auto;
+  padding-top: 10px;
+}
+
+.chips span {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 8px 11px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.hint {
+  font-size: 12px;
+  color: #475569;
+  margin: 8px 4px 0;
+}
+
+.suggestions {
+  margin: 8px 0 0;
+  list-style: none;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  max-height: min(260px, 36vh);
+  overflow: auto;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
+.suggestions li + li {
+  border-top: 1px solid #f1f5f9;
+}
+
+.suggestions button {
+  width: 100%;
+  border: 0;
+  background: #fff;
+  text-align: left;
+  padding: 10px 12px;
+}
+
+.suggestions strong {
+  display: block;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.suggestions span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.route-inputs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  position: relative;
+}
+
+.route-start-input,
+.route-end-input {
+  padding-right: 44px !important;
+}
+
+.swap-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  width: 34px;
+  height: 34px;
+  font-size: 17px;
+  z-index: 2;
+}
+
+.vehicle-tabs {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.vehicle-tabs button {
+  flex: 1;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #fff;
+  padding: 8px 6px;
+  font-size: 20px;
+}
+
+.vehicle-tabs button.active {
+  border-color: #2f64ff;
+  color: #2f64ff;
+  background: #eaf0ff;
+}
+
+.route-btn {
+  margin-top: 10px;
+  width: 100%;
+  background: #2f64ff;
+  color: #fff;
+  border: 0;
+  border-radius: 14px;
+  padding: 11px;
+  font-size: 17px;
+  box-shadow: 0 8px 18px rgba(47, 100, 255, 0.35);
+}
+
+.route-btn:disabled {
+  opacity: 0.7;
+}
+
+.suggestions.in-route {
+  margin-top: 10px;
+}
+
+.bottom-card {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(700px, 100%);
+  bottom: 0;
+  z-index: 20;
+  background: #fff;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 16px 16px 24px;
+  box-shadow: 0 -8px 20px rgba(15, 23, 42, 0.1);
+  max-height: 46%;
+  overflow: auto;
+}
+
+.bottom-card h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.bottom-card h3 span {
+  color: #64748b;
+  font-size: 16px;
+}
+
+.bottom-card p {
+  margin: 8px 0 0;
+  color: #475569;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.actions button {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid #2f64ff;
+  color: #2f64ff;
+  background: #fff;
+  font-size: 16px;
+  padding: 10px;
+}
+
+.actions button.primary {
+  background: #2f64ff;
+  color: #fff;
+}
+
+.route-info .steps {
+  margin-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.step {
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.step strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.step span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+@media (min-width: 900px) {
+  .top-search,
+  .route-header {
+    top: 16px;
+    width: min(560px, calc(100% - 24px));
+  }
+
+  .bottom-card {
+    width: min(560px, 100%);
+    max-height: 50%;
+  }
+}
+
+@media (max-width: 480px) {
+  .vehicle-tabs {
+    gap: 6px;
+  }
+
+  .vehicle-tabs button {
+    font-size: 18px;
+    padding: 7px 4px;
+  }
+
+  .chips span {
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+}

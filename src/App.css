@@ -80,6 +80,27 @@
   margin: 8px 4px 0;
 }
 
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.quick-actions button {
+  border-radius: 999px;
+  border: 1px solid #2f64ff;
+  color: #2f64ff;
+  background: #fff;
+  font-size: 14px;
+  padding: 10px 8px;
+}
+
+.quick-actions button.primary {
+  background: #2f64ff;
+  color: #fff;
+}
+
 .suggestions {
   margin: 8px 0 0;
   list-style: none;

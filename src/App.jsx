@@ -233,6 +233,33 @@ export default function App() {
     handleUseCurrentLocation()
   }
 
+  const handleLocateMyPosition = () => {
+    if (!navigator.geolocation) {
+      setError('Thiết bị không hỗ trợ định vị GPS.')
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const place = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          display: 'Vị trí hiện tại của tôi',
+          address: '',
+        }
+        setSelectedPlace(place)
+        setSearchQuery(place.display)
+        setMarker(placeMarkerRef, [place.lng, place.lat], '#ef4444')
+        mapRef.current?.flyTo({ center: [place.lng, place.lat], zoom: 15, essential: true })
+        setError('')
+      },
+      () => {
+        setError('Không lấy được vị trí hiện tại. Vui lòng bật GPS/quyền vị trí.')
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }
+
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
       setError('Thiết bị không hỗ trợ định vị GPS.')
@@ -351,6 +378,38 @@ export default function App() {
     }
   }
 
+  const handleStopDirection = () => {
+    const destination = selectedEnd || selectedPlace
+    setMode('browse')
+    setFocusedInput('search')
+    setIsSuggestOpen(false)
+    setSuggestions([])
+    setRouteInfo(null)
+    setInstructions([])
+    setTolls([])
+    setShowSteps(false)
+    setSelectedStart(null)
+    setSelectedEnd(null)
+    setStartQuery('')
+    setEndQuery('')
+    removeRouteLayer()
+
+    if (startMarkerRef.current) {
+      startMarkerRef.current.remove()
+      startMarkerRef.current = null
+    }
+    if (endMarkerRef.current) {
+      endMarkerRef.current.remove()
+      endMarkerRef.current = null
+    }
+
+    if (destination) {
+      setSelectedPlace(destination)
+      setSearchQuery(destination.display || '')
+      setMarker(placeMarkerRef, [destination.lng, destination.lat], '#ef4444')
+    }
+  }
+
   useEffect(() => {
     if (mode !== 'route') return
 
@@ -385,6 +444,14 @@ export default function App() {
             {CATEGORY_TAGS.map((tag) => (
               <span key={tag}>{tag}</span>
             ))}
+          </div>
+          <div className="quick-actions">
+            <button type="button" className="primary" onClick={handleOpenDirection}>
+              Tìm đường 2 điểm
+            </button>
+            <button type="button" onClick={handleLocateMyPosition}>
+              Vị trí hiện tại của tôi
+            </button>
           </div>
           {isSearching && <p className="hint">Đang tải gợi ý...</p>}
           {isSuggestOpen && focusedInput === 'search' && suggestions.length > 0 && (
@@ -502,8 +569,8 @@ export default function App() {
             <button type="button" onClick={() => setShowSteps((prev) => !prev)}>
               {showSteps ? 'Ẩn chặng' : 'Các chặng'}
             </button>
-            <button type="button" className="primary">
-              Bắt đầu
+            <button type="button" className="primary" onClick={handleStopDirection}>
+              Tắt tìm đường
             </button>
           </div>
           {showSteps && (

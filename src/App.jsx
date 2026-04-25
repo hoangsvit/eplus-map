@@ -6,6 +6,83 @@ const DEFAULT_CENTER = [106.70098, 10.77689]
 const ROUTE_SOURCE_ID = 'route-source'
 const ROUTE_LAYER_ID = 'route-layer'
 
+const decodePolyline = (encoded) => {
+  if (!encoded || typeof encoded !== 'string') return []
+
+  let index = 0
+  let lat = 0
+  let lng = 0
+  const coordinates = []
+
+  while (index < encoded.length) {
+    let shift = 0
+    let result = 0
+    let byte
+
+    do {
+      byte = encoded.charCodeAt(index++) - 63
+      result |= (byte & 0x1f) << shift
+      shift += 5
+    } while (byte >= 0x20)
+
+    const deltaLat = result & 1 ? ~(result >> 1) : result >> 1
+    lat += deltaLat
+
+    shift = 0
+    result = 0
+    do {
+      byte = encoded.charCodeAt(index++) - 63
+      result |= (byte & 0x1f) << shift
+      shift += 5
+    } while (byte >= 0x20)
+
+    const deltaLng = result & 1 ? ~(result >> 1) : result >> 1
+    lng += deltaLng
+
+    coordinates.push([lng / 1e5, lat / 1e5])
+  }
+
+  return coordinates
+}
+
+const parseRouteCoordinates = (route) => {
+  if (!route) return []
+
+  if (Array.isArray(route.points)) {
+    const points = route.points.filter((point) => Array.isArray(point) && point.length >= 2)
+    if (!points.length) return []
+
+    if (!Array.isArray(route.bbox) || route.bbox.length !== 4) {
+      return points.map((point) => [point[1], point[0]])
+    }
+
+    const [minLon, minLat, maxLon, maxLat] = route.bbox
+    const lonLatScore = points.reduce((score, [first, second]) => {
+      const inLonRange = first >= minLon && first <= maxLon
+      const inLatRange = second >= minLat && second <= maxLat
+      return score + (inLonRange && inLatRange ? 1 : 0)
+    }, 0)
+
+    const latLonScore = points.reduce((score, [first, second]) => {
+      const inLatRange = first >= minLat && first <= maxLat
+      const inLonRange = second >= minLon && second <= maxLon
+      return score + (inLatRange && inLonRange ? 1 : 0)
+    }, 0)
+
+    if (lonLatScore >= latLonScore) {
+      return points.map(([lon, lat]) => [lon, lat])
+    }
+
+    return points.map(([lat, lon]) => [lon, lat])
+  }
+
+  if (typeof route.points === 'string') {
+    return decodePolyline(route.points)
+  }
+
+  return []
+}
+
 export default function App() {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
@@ -18,6 +95,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [selectedPlace, setSelectedPlace] = useState(null)
   const [routeSummary, setRouteSummary] = useState(null)
+  const [routeInstructions, setRouteInstructions] = useState([])
 
   const apiKey = useMemo(() => import.meta.env.VITE_VIETMAP_API_KEY || '', [])
 
@@ -222,6 +300,7 @@ export default function App() {
 
       removeRouteFromMap()
       setRouteSummary(null)
+      setRouteInstructions([])
       setSelectedPlace({ lat: place.lat, lng: place.lng, name: place.display || item.display || item.name || '' })
       setQuery(place.display || item.display || item.name || '')
       setSuggestions([])
@@ -266,11 +345,7 @@ export default function App() {
         throw new Error('Không tìm thấy lộ trình phù hợp.')
       }
 
-      const coordinates = Array.isArray(route.points)
-        ? route.points
-            .filter((point) => Array.isArray(point) && point.length >= 2)
-            .map((point) => [point[1], point[0]])
-        : []
+      const coordinates = parseRouteCoordinates(route)
 
       if (coordinates.length < 2) {
         throw new Error('Dữ liệu tuyến đường không hợp lệ.')
@@ -281,8 +356,10 @@ export default function App() {
         distanceKm: route.distance ? (route.distance / 1000).toFixed(2) : null,
         durationMin: route.time ? Math.round(route.time / 60000) : null,
       })
+      setRouteInstructions(Array.isArray(route.instructions) ? route.instructions : [])
     } catch (routeError) {
       setRouteSummary(null)
+      setRouteInstructions([])
       setError(routeError.message || 'Không thể tạo tuyến đường. Vui lòng thử lại.')
     } finally {
       setIsRouting(false)
@@ -330,6 +407,19 @@ export default function App() {
             <p>
               Thời gian dự kiến: <span className="font-semibold">{routeSummary.durationMin} phút</span>
             </p>
+          </div>
+        )}
+
+        {routeInstructions.length > 0 && (
+          <div className="mt-2 rounded-md border border-slate-200 bg-white px-3 py-2">
+            <p className="text-sm font-medium text-slate-800">Hướng dẫn di chuyển</p>
+            <ol className="mt-2 max-h-52 list-decimal space-y-1 overflow-y-auto pl-4 text-xs text-slate-600">
+              {routeInstructions.map((instruction, index) => (
+                <li key={`${instruction.interval?.join('-') || instruction.text}-${index}`}>
+                  {instruction.text}
+                </li>
+              ))}
+            </ol>
           </div>
         )}
 

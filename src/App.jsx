@@ -8,10 +8,10 @@ const ROUTE_SOURCE_ID = 'route-source'
 const ROUTE_LAYER_ID = 'route-layer'
 const CATEGORY_TAGS = ['Ăn & Uống', 'Chỗ ở', 'Mua sắm', 'Giải trí & Thư giãn']
 const VEHICLES = [
-  { key: 'car', label: '🚗' },
-  { key: 'bike', label: '🚲' },
-  { key: 'foot', label: '🚶' },
-  { key: 'motorcycle', label: '🏍️' },
+  { key: 'car', icon: 'fa-solid fa-car' },
+  { key: 'bike', icon: 'fa-solid fa-bicycle' },
+  { key: 'foot', icon: 'fa-solid fa-person-walking' },
+  { key: 'motorcycle', icon: 'fa-solid fa-motorcycle' },
 ]
 
 function toLngLat(point) {
@@ -233,6 +233,33 @@ export default function App() {
     handleUseCurrentLocation()
   }
 
+  const handleLocateMyPosition = () => {
+    if (!navigator.geolocation) {
+      setError('Thiết bị không hỗ trợ định vị GPS.')
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const place = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          display: 'Vị trí hiện tại của tôi',
+          address: '',
+        }
+        setSelectedPlace(place)
+        setSearchQuery(place.display)
+        setMarker(placeMarkerRef, [place.lng, place.lat], '#ef4444')
+        mapRef.current?.flyTo({ center: [place.lng, place.lat], zoom: 15, essential: true })
+        setError('')
+      },
+      () => {
+        setError('Không lấy được vị trí hiện tại. Vui lòng bật GPS/quyền vị trí.')
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }
+
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
       setError('Thiết bị không hỗ trợ định vị GPS.')
@@ -351,6 +378,38 @@ export default function App() {
     }
   }
 
+  const handleStopDirection = () => {
+    const destination = selectedEnd || selectedPlace
+    setMode('browse')
+    setFocusedInput('search')
+    setIsSuggestOpen(false)
+    setSuggestions([])
+    setRouteInfo(null)
+    setInstructions([])
+    setTolls([])
+    setShowSteps(false)
+    setSelectedStart(null)
+    setSelectedEnd(null)
+    setStartQuery('')
+    setEndQuery('')
+    removeRouteLayer()
+
+    if (startMarkerRef.current) {
+      startMarkerRef.current.remove()
+      startMarkerRef.current = null
+    }
+    if (endMarkerRef.current) {
+      endMarkerRef.current.remove()
+      endMarkerRef.current = null
+    }
+
+    if (destination) {
+      setSelectedPlace(destination)
+      setSearchQuery(destination.display || '')
+      setMarker(placeMarkerRef, [destination.lng, destination.lat], '#ef4444')
+    }
+  }
+
   useEffect(() => {
     if (mode !== 'route') return
 
@@ -402,6 +461,22 @@ export default function App() {
         </div>
       )}
 
+      {mode === 'browse' && (
+        <div className="floating-quick-actions">
+          <button type="button" className="quick-icon-btn" onClick={handleOpenDirection} title="Tìm đường 2 điểm">
+            <i className="fa-solid fa-route" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="quick-icon-btn"
+            onClick={handleLocateMyPosition}
+            title="Vị trí hiện tại của tôi"
+          >
+            <i className="fa-solid fa-location-crosshairs" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
       {mode === 'route' && (
         <div className="route-header">
           <div className="route-inputs">
@@ -436,10 +511,10 @@ export default function App() {
               placeholder="Nhập điểm đến"
             />
             <button type="button" className="swap-btn" onClick={handleSwap}>
-              ⇅
+              <i className="fa-solid fa-arrow-up-arrow-down" aria-hidden="true" />
             </button>
             <button type="button" className="gps-btn" onClick={handleUseCurrentLocation}>
-              📍
+              <i className="fa-solid fa-location-crosshairs" aria-hidden="true" />
             </button>
           </div>
 
@@ -451,7 +526,7 @@ export default function App() {
                 type="button"
                 onClick={() => setVehicle(item.key)}
               >
-                {item.label}
+                <i className={item.icon} aria-hidden="true" />
               </button>
             ))}
           </div>
@@ -502,8 +577,8 @@ export default function App() {
             <button type="button" onClick={() => setShowSteps((prev) => !prev)}>
               {showSteps ? 'Ẩn chặng' : 'Các chặng'}
             </button>
-            <button type="button" className="primary">
-              Bắt đầu
+            <button type="button" className="primary" onClick={handleStopDirection}>
+              Tắt tìm đường
             </button>
           </div>
           {showSteps && (

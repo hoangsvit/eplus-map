@@ -69,7 +69,6 @@ export default function App() {
       center: DEFAULT_CENTER,
       zoom: 14,
     })
-    map.addControl(new vietmapgl.NavigationControl(), 'top-right')
     mapRef.current = map
 
     return () => {
@@ -262,9 +261,11 @@ export default function App() {
     setSelectedEnd(selectedStart)
   }
 
-  const handleFindRoute = async () => {
+  const fetchRoute = async () => {
     if (!selectedStart || !selectedEnd) {
-      setError('Vui lòng chọn đủ điểm đi và điểm đến từ gợi ý.')
+      setRouteInfo(null)
+      setInstructions([])
+      removeRouteLayer()
       return
     }
 
@@ -305,6 +306,16 @@ export default function App() {
       setIsRouting(false)
     }
   }
+
+  useEffect(() => {
+    if (mode !== 'route') return
+
+    const timeout = setTimeout(() => {
+      fetchRoute()
+    }, 250)
+
+    return () => clearTimeout(timeout)
+  }, [mode, selectedStart, selectedEnd, vehicle])
 
   return (
     <div className="screen">
@@ -401,9 +412,7 @@ export default function App() {
             ))}
           </div>
 
-          <button type="button" className="route-btn" onClick={handleFindRoute} disabled={isRouting}>
-            {isRouting ? 'Đang tìm...' : 'Tìm đường'}
-          </button>
+          {isRouting && <p className="hint">Đang tự động tìm tuyến đường...</p>}
 
           {isSuggestOpen && (focusedInput === 'start' || focusedInput === 'end') && suggestions.length > 0 && (
             <ul className="suggestions in-route">

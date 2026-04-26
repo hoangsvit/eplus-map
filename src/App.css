@@ -72,6 +72,17 @@
   gap: 8px;
 }
 
+@media (max-width: 768px) {
+  .mapboxgl-ctrl-top-right,
+  .mapboxgl-ctrl-bottom-right {
+    right: 12px;
+  }
+
+  .mapboxgl-ctrl-bottom-right {
+    bottom: calc(env(safe-area-inset-bottom) + 88px);
+  }
+}
+
 /* Hide VietMap / map library logo if present */
 .mapboxgl-ctrl-logo,
 .vietmapgl-ctrl-logo,

@@ -1027,7 +1027,7 @@ export default function App() {
       <div className={`absolute z-40 flex flex-col gap-1.5 md:gap-2 bg-white p-1.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.16)] transition-all duration-300 ${
         mode === 'route' 
           ? 'top-4 right-3 md:top-24 md:right-4' 
-          : (selectedPlace ? 'bottom-[max(184px,calc(env(safe-area-inset-bottom)+176px))] right-3 md:bottom-8 md:left-4 md:right-auto' : 'bottom-[max(24px,calc(env(safe-area-inset-bottom)+12px))] right-3 md:bottom-8 md:left-4 md:right-auto')
+          : 'top-[76px] right-3 md:top-auto md:right-auto md:bottom-8 md:left-4'
       }`}>
         <button 
           className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[12px] md:text-[13px] font-medium transition-colors ${tilemapStyle === 'vectorDefault' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 

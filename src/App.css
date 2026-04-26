@@ -79,7 +79,8 @@
   }
 
   .mapboxgl-ctrl-bottom-right {
-    bottom: calc(env(safe-area-inset-bottom) + 88px);
+    top: calc(env(safe-area-inset-top) + 132px);
+    bottom: auto;
   }
 }
 

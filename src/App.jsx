@@ -60,7 +60,7 @@ export default function App() {
   const [instructions, setInstructions] = useState([])
   const [tolls, setTolls] = useState([])
   const [showSteps, setShowSteps] = useState(false)
-  const [vehicleMenuOpen, setVehicleMenuOpen] = useState(false)
+  const [showVehicleInfo, setShowVehicleInfo] = useState(false)
   const [error, setError] = useState('')
 
   const tollTotal = useMemo(
@@ -224,7 +224,7 @@ export default function App() {
     setFocusedInput('start')
     setIsSuggestOpen(false)
     setSuggestions([])
-    setVehicleMenuOpen(false)
+    setShowVehicleInfo(false)
 
     if (selectedPlace) {
       setSelectedEnd(selectedPlace)
@@ -390,7 +390,7 @@ export default function App() {
     setInstructions([])
     setTolls([])
     setShowSteps(false)
-    setVehicleMenuOpen(false)
+    setShowVehicleInfo(false)
     setSelectedStart(null)
     setSelectedEnd(null)
     setStartQuery('')
@@ -524,33 +524,31 @@ export default function App() {
           </div>
 
           <div className="vehicle-selector">
-            <button
-              type="button"
-              className="vehicle-trigger"
-              onClick={() => setVehicleMenuOpen((prev) => !prev)}
-              aria-expanded={vehicleMenuOpen}
-            >
-              <i className={activeVehicle.icon} aria-hidden="true" />
-              <span>{activeVehicle.label}</span>
-              <i className={`fa-solid ${vehicleMenuOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true" />
-            </button>
-
-            {vehicleMenuOpen && (
-              <div className="vehicle-menu">
-                {VEHICLES.map((item) => (
-                  <button
-                    key={item.key}
-                    className={item.key === vehicle ? 'active' : ''}
-                    type="button"
-                    onClick={() => {
+            <div className="vehicle-icon-list">
+              {VEHICLES.map((item) => (
+                <button
+                  key={item.key}
+                  className={item.key === vehicle ? 'active' : ''}
+                  type="button"
+                  title={item.label}
+                  onClick={() => {
+                    if (item.key === vehicle) {
+                      setShowVehicleInfo((prev) => !prev)
+                    } else {
                       setVehicle(item.key)
-                      setVehicleMenuOpen(false)
-                    }}
-                  >
-                    <i className={item.icon} aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </button>
-                ))}
+                      setShowVehicleInfo(true)
+                    }
+                  }}
+                >
+                  <i className={item.icon} aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+
+            {showVehicleInfo && (
+              <div className="vehicle-info">
+                <strong>{activeVehicle.label}</strong>
+                <span>Bấm lại icon đang chọn để ẩn thông tin.</span>
               </div>
             )}
           </div>

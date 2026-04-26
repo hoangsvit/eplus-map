@@ -8,10 +8,10 @@ const ROUTE_SOURCE_ID = 'route-source'
 const ROUTE_LAYER_ID = 'route-layer'
 const CATEGORY_TAGS = ['Ăn & Uống', 'Chỗ ở', 'Mua sắm', 'Giải trí & Thư giãn']
 const VEHICLES = [
-  { key: 'car', icon: 'fa-solid fa-car' },
-  { key: 'bike', icon: 'fa-solid fa-bicycle' },
-  { key: 'foot', icon: 'fa-solid fa-person-walking' },
-  { key: 'motorcycle', icon: 'fa-solid fa-motorcycle' },
+  { key: 'car', icon: 'fa-solid fa-car', label: 'Ô tô' },
+  { key: 'bike', icon: 'fa-solid fa-bicycle', label: 'Xe đạp' },
+  { key: 'foot', icon: 'fa-solid fa-person-walking', label: 'Đi bộ' },
+  { key: 'motorcycle', icon: 'fa-solid fa-motorcycle', label: 'Xe máy' },
 ]
 
 function toLngLat(point) {
@@ -60,6 +60,7 @@ export default function App() {
   const [instructions, setInstructions] = useState([])
   const [tolls, setTolls] = useState([])
   const [showSteps, setShowSteps] = useState(false)
+  const [vehicleMenuOpen, setVehicleMenuOpen] = useState(false)
   const [error, setError] = useState('')
 
   const tollTotal = useMemo(
@@ -223,6 +224,7 @@ export default function App() {
     setFocusedInput('start')
     setIsSuggestOpen(false)
     setSuggestions([])
+    setVehicleMenuOpen(false)
 
     if (selectedPlace) {
       setSelectedEnd(selectedPlace)
@@ -388,6 +390,7 @@ export default function App() {
     setInstructions([])
     setTolls([])
     setShowSteps(false)
+    setVehicleMenuOpen(false)
     setSelectedStart(null)
     setSelectedEnd(null)
     setStartQuery('')
@@ -419,6 +422,8 @@ export default function App() {
 
     return () => clearTimeout(timeout)
   }, [mode, selectedStart, selectedEnd, vehicle])
+
+  const activeVehicle = VEHICLES.find((item) => item.key === vehicle) || VEHICLES[0]
 
   return (
     <div className="screen">
@@ -518,17 +523,36 @@ export default function App() {
             </button>
           </div>
 
-          <div className="vehicle-tabs">
-            {VEHICLES.map((item) => (
-              <button
-                key={item.key}
-                className={item.key === vehicle ? 'active' : ''}
-                type="button"
-                onClick={() => setVehicle(item.key)}
-              >
-                <i className={item.icon} aria-hidden="true" />
-              </button>
-            ))}
+          <div className="vehicle-selector">
+            <button
+              type="button"
+              className="vehicle-trigger"
+              onClick={() => setVehicleMenuOpen((prev) => !prev)}
+              aria-expanded={vehicleMenuOpen}
+            >
+              <i className={activeVehicle.icon} aria-hidden="true" />
+              <span>{activeVehicle.label}</span>
+              <i className={`fa-solid ${vehicleMenuOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true" />
+            </button>
+
+            {vehicleMenuOpen && (
+              <div className="vehicle-menu">
+                {VEHICLES.map((item) => (
+                  <button
+                    key={item.key}
+                    className={item.key === vehicle ? 'active' : ''}
+                    type="button"
+                    onClick={() => {
+                      setVehicle(item.key)
+                      setVehicleMenuOpen(false)
+                    }}
+                  >
+                    <i className={item.icon} aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {isRouting && <p className="hint">Đang tự động tìm tuyến đường...</p>}

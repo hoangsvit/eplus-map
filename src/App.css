@@ -46,6 +46,11 @@
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
+.route-header {
+  max-height: min(62dvh, 520px);
+  overflow: auto;
+}
+
 .top-search input,
 .route-inputs input {
   width: 100%;
@@ -174,22 +179,42 @@
   z-index: 2;
 }
 
-.vehicle-tabs {
-  display: flex;
-  gap: 10px;
-  margin-top: 8px;
+.vehicle-selector {
+  margin-top: 10px;
 }
 
-.vehicle-tabs button {
-  flex: 1;
+.vehicle-trigger {
   border: 1px solid #d1d5db;
   border-radius: 999px;
   background: #fff;
-  padding: 8px 6px;
-  font-size: 20px;
+  height: 38px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f172a;
 }
 
-.vehicle-tabs button.active {
+.vehicle-menu {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.vehicle-menu button {
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  color: #0f172a;
+}
+
+.vehicle-menu button.active {
   border-color: #2f64ff;
   color: #2f64ff;
   background: #eaf0ff;
@@ -296,17 +321,85 @@
 }
 
 @media (max-width: 480px) {
-  .vehicle-tabs {
-    gap: 6px;
+  .top-search,
+  .route-header {
+    width: calc(100% - 12px);
+    left: 6px;
+    right: 6px;
+    transform: none;
+    top: max(8px, env(safe-area-inset-top));
+    border-radius: 14px;
+    padding: 8px;
   }
 
-  .vehicle-tabs button {
-    font-size: 18px;
-    padding: 7px 4px;
+  .top-search input,
+  .route-inputs input {
+    border-radius: 14px;
+    padding: 10px 12px;
+  }
+
+  .route-header {
+    max-height: min(58dvh, 470px);
+  }
+
+  .suggestions {
+    max-height: min(210px, 30vh);
+  }
+
+  .vehicle-trigger {
+    height: 36px;
+    padding: 0 10px;
+    gap: 7px;
+    font-size: 14px;
+  }
+
+  .vehicle-menu button {
+    padding: 8px;
+    font-size: 14px;
   }
 
   .chips span {
     font-size: 12px;
     padding: 7px 10px;
+  }
+
+  .floating-quick-actions {
+    right: 8px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    gap: 8px;
+  }
+
+  .quick-icon-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+
+  .bottom-card {
+    width: 100%;
+    left: 0;
+    transform: none;
+    border-radius: 16px 16px 0 0;
+    max-height: 58%;
+    padding: 14px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .actions {
+    gap: 8px;
+  }
+
+  .actions button {
+    font-size: 15px;
+    padding: 10px 8px;
+  }
+}
+
+@media (max-width: 360px) {
+  .actions {
+    flex-direction: column;
+  }
+
+  .actions button {
+    width: 100%;
   }
 }

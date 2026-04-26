@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import vietmapgl from '@vietmap/vietmap-gl-js/dist/vietmap-gl.js'
 import '@vietmap/vietmap-gl-js/dist/vietmap-gl.css'
 import './App.css'
+import { apiService } from './services/api'
 
 const DEFAULT_CENTER = [106.70098, 10.77689]
 const ROUTE_SOURCE_ID = 'route-source'
@@ -36,6 +37,7 @@ export default function App() {
   const placeMarkerRef = useRef(null)
   const startMarkerRef = useRef(null)
   const endMarkerRef = useRef(null)
+  const routeActionRef = useRef(null)
 
   const apiKey = useMemo(() => import.meta.env.VITE_VIETMAP_API_KEY || '', [])
   const styleUrl = useMemo(
@@ -77,6 +79,38 @@ export default function App() {
     })
     mapRef.current = map
 
+    // Controls: Navigation, Geolocate, Scale, Fullscreen
+    // Navigation (zoom + compass) top-right
+    map.addControl(
+      new vietmapgl.NavigationControl({
+        showZoom: true,
+        showCompass: true,
+      }),
+      'top-right',
+    )
+
+    // Geolocate (user position) top-right
+    map.addControl(
+      new vietmapgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showAccuracyCircle: true,
+      }),
+      'top-right',
+    )
+
+    // Scale control bottom-left
+    map.addControl(
+      new vietmapgl.ScaleControl({
+        maxWidth: 100,
+        unit: 'metric',
+      }),
+      'bottom-left',
+    )
+
+    // Fullscreen control top-right
+    map.addControl(new vietmapgl.FullscreenControl(), 'top-right')
+
     return () => {
       if (placeMarkerRef.current) placeMarkerRef.current.remove()
       if (startMarkerRef.current) startMarkerRef.current.remove()
@@ -102,19 +136,11 @@ export default function App() {
         setIsSearching(true)
         const center = mapRef.current?.getCenter()
         const focus = center ? `${center.lat},${center.lng}` : `${DEFAULT_CENTER[1]},${DEFAULT_CENTER[0]}`
-        const params = new URLSearchParams({
-          apikey: apiKey,
-          text: query,
-          focus,
-          display_type: '5',
-        })
 
-        const response = await fetch(`https://maps.vietmap.vn/api/autocomplete/v4?${params.toString()}`, {
-          signal: controller.signal,
-        })
-        if (!response.ok) throw new Error('Không thể tải gợi ý.')
-        const data = await response.json()
-        setSuggestions(Array.isArray(data) ? data : [])
+        const data = await apiService.searchAutocomplete(query, focus, apiKey)
+        if (!controller.signal.aborted) {
+          setSuggestions(data)
+        }
       } catch (err) {
         if (err.name !== 'AbortError') setSuggestions([])
       } finally {
@@ -168,27 +194,11 @@ export default function App() {
     map.fitBounds(bounds, { padding: 80, duration: 450 })
   }
 
-  const fetchPlaceByRefId = async (refId) => {
-    const params = new URLSearchParams({ apikey: apiKey, refid: refId })
-    const response = await fetch(`https://maps.vietmap.vn/api/place/v4?${params.toString()}`)
-    if (!response.ok) throw new Error('Không lấy được chi tiết địa điểm.')
-    const place = await response.json()
-    if (typeof place?.lat !== 'number' || typeof place?.lng !== 'number') {
-      throw new Error('Địa điểm không có tọa độ hợp lệ.')
-    }
-    return {
-      lat: place.lat,
-      lng: place.lng,
-      display: place.display || place.name || '',
-      address: place.address || '',
-    }
-  }
-
   const handleSelectSuggestion = async (item) => {
     if (!item?.ref_id || !apiKey) return
     try {
       setError('')
-      const place = await fetchPlaceByRefId(item.ref_id)
+      const place = await apiService.getPlaceDetail(item.ref_id, apiKey)
       const lngLat = [place.lng, place.lat]
 
       if (focusedInput === 'search') {
@@ -218,7 +228,7 @@ export default function App() {
     }
   }
 
-  const handleOpenDirection = async () => {
+  const handleOpenDirection = useCallback(async () => {
     setMode('route')
     setFocusedInput('start')
     setIsSuggestOpen(false)
@@ -228,64 +238,13 @@ export default function App() {
       setSelectedEnd(selectedPlace)
       setEndQuery(selectedPlace.display)
     }
+  }, [selectedPlace])
 
-    if (selectedStart) return
-    handleUseCurrentLocation()
-  }
+  useEffect(() => {
+    routeActionRef.current = handleOpenDirection
+  }, [handleOpenDirection])
 
-  const handleLocateMyPosition = () => {
-    if (!navigator.geolocation) {
-      setError('Thiết bị không hỗ trợ định vị GPS.')
-      return
-    }
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const place = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          display: 'Vị trí hiện tại của tôi',
-          address: '',
-        }
-        setSelectedPlace(place)
-        setSearchQuery(place.display)
-        setMarker(placeMarkerRef, [place.lng, place.lat], '#ef4444')
-        mapRef.current?.flyTo({ center: [place.lng, place.lat], zoom: 15, essential: true })
-        setError('')
-      },
-      () => {
-        setError('Không lấy được vị trí hiện tại. Vui lòng bật GPS/quyền vị trí.')
-      },
-      { enableHighAccuracy: true, timeout: 10000 },
-    )
-  }
-
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setError('Thiết bị không hỗ trợ định vị GPS.')
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const place = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          display: 'Vị trí hiện tại',
-          address: '',
-        }
-        setSelectedStart(place)
-        setStartQuery(place.display)
-        setMarker(startMarkerRef, [place.lng, place.lat], '#1d4ed8')
-        mapRef.current?.flyTo({ center: [place.lng, place.lat], zoom: 15, essential: true })
-        setError('')
-      },
-      () => {
-        setError('Không lấy được vị trí hiện tại. Vui lòng bật GPS/quyền vị trí.')
-      },
-      { enableHighAccuracy: true, timeout: 10000 },
-    )
-  }
 
   const handleSwap = () => {
     setStartQuery(endQuery)
@@ -306,66 +265,40 @@ export default function App() {
     try {
       setIsRouting(true)
       setError('')
-      const routeVehicle = vehicle === 'car' ? 'car' : vehicle === 'motorcycle' ? 'motorcycle' : 'motorcycle'
-      const params = new URLSearchParams({
-        apikey: apiKey,
-        vehicle: routeVehicle,
-        points_encoded: 'false',
-      })
-      params.append('point', `${selectedStart.lat},${selectedStart.lng}`)
-      params.append('point', `${selectedEnd.lat},${selectedEnd.lng}`)
 
-      const response = await fetch(`https://maps.vietmap.vn/api/route/v3?${params.toString()}`)
-      if (!response.ok) throw new Error('Không gọi được Route API.')
-      const data = await response.json()
-      if (data?.code && data.code !== 'OK') {
-        throw new Error(data?.messages || `Route v3 lỗi: ${data.code}`)
-      }
-      const path = data?.paths?.[0]
-      if (!path) throw new Error('Không có tuyến đường phù hợp.')
+      const routeData = await apiService.getRoute(
+        selectedStart.lat,
+        selectedStart.lng,
+        selectedEnd.lat,
+        selectedEnd.lng,
+        vehicle,
+        apiKey,
+      )
 
-      const coordinates = extractCoordinates(path.points)
+      const coordinates = extractCoordinates(routeData.points)
       if (coordinates.length < 2) throw new Error('Dữ liệu tuyến đường không hợp lệ.')
 
       drawRoute(coordinates)
       setRouteInfo({
-        distanceKm: (path.distance / 1000).toFixed(2),
-        durationMin: Math.round(path.time / 60000),
+        distanceKm: (routeData.distance / 1000).toFixed(2),
+        durationMin: Math.round(routeData.time / 60000),
       })
-      setInstructions(Array.isArray(path.instructions) ? path.instructions : [])
+      setInstructions(routeData.instructions)
+
+      // Lấy phí cao tốc nếu là ô tô
       if (vehicle === 'car') {
-        try {
-          const tollsResponse = await fetch(
-            `https://maps.vietmap.vn/api/route-tolls?api-version=1.1&apikey=${apiKey}&vehicle=1`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify([
-                [selectedStart.lng, selectedStart.lat],
-                [selectedEnd.lng, selectedEnd.lat],
-              ]),
-            },
-          )
-          if (tollsResponse.ok) {
-            const tollData = await tollsResponse.json()
-            const tollList = Array.isArray(tollData?.tolls)
-              ? tollData.tolls
-              : Array.isArray(tollData?.data?.tolls)
-                ? tollData.data.tolls
-                : []
-            setTolls(tollList)
-          } else {
-            setTolls([])
-          }
-        } catch {
-          // Không chặn hiển thị tuyến đường nếu API phí cao tốc lỗi tạm thời.
-          setTolls([])
-        }
+        const tollList = await apiService.getRouteTolls(
+          selectedStart.lng,
+          selectedStart.lat,
+          selectedEnd.lng,
+          selectedEnd.lat,
+          apiKey,
+        )
+        setTolls(tollList)
       } else {
         setTolls([])
       }
+
       setShowSteps(false)
       setIsSuggestOpen(false)
     } catch (err) {
@@ -462,19 +395,14 @@ export default function App() {
       )}
 
       {mode === 'browse' && (
-        <div className="floating-quick-actions">
-          <button type="button" className="quick-icon-btn" onClick={handleOpenDirection} title="Tìm đường 2 điểm">
-            <i className="fa-solid fa-route" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="quick-icon-btn"
-            onClick={handleLocateMyPosition}
-            title="Vị trí hiện tại của tôi"
-          >
-            <i className="fa-solid fa-location-crosshairs" aria-hidden="true" />
-          </button>
-        </div>
+        <button
+          type="button"
+          className="floating-route-btn"
+          onClick={handleOpenDirection}
+          title="Tìm đường 2 điểm"
+        >
+          <i className="fa-solid fa-route" aria-hidden="true" />
+        </button>
       )}
 
       {mode === 'route' && (
@@ -512,9 +440,6 @@ export default function App() {
             />
             <button type="button" className="swap-btn" onClick={handleSwap}>
               <i className="fa-solid fa-arrow-up-arrow-down" aria-hidden="true" />
-            </button>
-            <button type="button" className="gps-btn" onClick={handleUseCurrentLocation}>
-              <i className="fa-solid fa-location-crosshairs" aria-hidden="true" />
             </button>
           </div>
 

@@ -7,18 +7,11 @@ import { apiService } from './services/api'
 const DEFAULT_CENTER = [106.70098, 10.77689]
 const ROUTE_SOURCE_ID = 'route-source'
 const ROUTE_LAYER_ID = 'route-layer'
-const CATEGORY_TAGS = ['Ăn & Uống', 'Chỗ ở', 'Mua sắm', 'Giải trí & Thư giãn']
 const VEHICLES = [
-  { key: 'car', icon: 'fa-solid fa-car' },
-  { key: 'bike', icon: 'fa-solid fa-bicycle' },
-  { key: 'foot', icon: 'fa-solid fa-person-walking' },
-  { key: 'motorcycle', icon: 'fa-solid fa-motorcycle' },
-]
-const TILEMAP_STYLES = [
-  { key: 'vectorDefault', label: 'Bình thường', icon: 'fa-solid fa-map' },
-  { key: 'vectorLight', label: 'Sáng', icon: 'fa-solid fa-sun' },
-  { key: 'vectorDark', label: 'Tối', icon: 'fa-solid fa-moon' },
-  { key: 'vectorHybrid', label: 'Vệ tinh', icon: 'fa-solid fa-satellite' },
+  { key: 'car', icon: 'fa-solid fa-car', label: 'Ô tô' },
+  { key: 'motorcycle', icon: 'fa-solid fa-motorcycle', label: 'Xe máy' },
+  { key: 'bike', icon: 'fa-solid fa-bicycle', label: 'Xe đạp' },
+  { key: 'foot', icon: 'fa-solid fa-person-walking', label: 'Đi bộ' },
 ]
 
 function toLngLat(point) {
@@ -40,10 +33,10 @@ function extractCoordinates(points) {
 export default function App() {
   const mapContainerRef = useRef(null)
   const mapRef = useRef(null)
+  
+  // Marker Refs
   const placeMarkerRef = useRef(null)
-  const startMarkerRef = useRef(null)
-  const endMarkerRef = useRef(null)
-  const routeActionRef = useRef(null)
+  const routeMarkersRef = useRef([])
 
   const apiKey = useMemo(() => import.meta.env.VITE_VIETMAP_API_KEY || '', [])
   const [tilemapStyle, setTilemapStyle] = useState('vectorDefault')
@@ -53,15 +46,22 @@ export default function App() {
   )
 
   const [mode, setMode] = useState('browse')
+  
+  // States for Browse Mode
   const [focusedInput, setFocusedInput] = useState('search')
-  const [isSuggestOpen, setIsSuggestOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [startQuery, setStartQuery] = useState('')
-  const [endQuery, setEndQuery] = useState('')
   const [selectedPlace, setSelectedPlace] = useState(null)
-  const [selectedStart, setSelectedStart] = useState(null)
-  const [selectedEnd, setSelectedEnd] = useState(null)
+  
+  // States for Route Mode
+  const [routePoints, setRoutePoints] = useState([
+    { id: 'start', place: null, query: '' },
+    { id: 'end', place: null, query: '' }
+  ])
+  const [focusedPointIndex, setFocusedPointIndex] = useState(null)
   const [vehicle, setVehicle] = useState('car')
+  
+  // Common States
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false)
   const [suggestions, setSuggestions] = useState([])
   const [isSearching, setIsSearching] = useState(false)
   const [isRouting, setIsRouting] = useState(false)
@@ -71,10 +71,33 @@ export default function App() {
   const [showSteps, setShowSteps] = useState(false)
   const [error, setError] = useState('')
 
+  // Track active state for Map click events without re-binding
+  const activeStateRef = useRef({ mode, focusedInput, focusedPointIndex, routePoints, searchQuery })
+  useEffect(() => {
+    activeStateRef.current = { mode, focusedInput, focusedPointIndex, routePoints, searchQuery }
+  }, [mode, focusedInput, focusedPointIndex, routePoints, searchQuery])
+
   const tollTotal = useMemo(
     () => tolls.reduce((sum, item) => sum + Math.max(0, Number(item?.amount || 0)), 0),
     [tolls],
   )
+
+  // Click outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      // Bỏ qua nếu click vào map canvas (để map click tự xử lý reverse geocode)
+      if (e.target.closest('.mapboxgl-canvas') || e.target.closest('.map')) return;
+      
+      // Nếu không click vào khu vực UI (search bar hoặc sidebar)
+      if (!e.target.closest('.search-ui-container')) {
+        setIsSuggestOpen(false);
+        setFocusedInput(null);
+        setFocusedPointIndex(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
@@ -86,52 +109,85 @@ export default function App() {
     })
     mapRef.current = map
 
-    // Controls: Navigation, Geolocate, Scale, Fullscreen
-    // Navigation (zoom + compass) top-right
-    map.addControl(
-      new vietmapgl.NavigationControl({
-        showZoom: true,
-        showCompass: true,
-      }),
-      'top-right',
-    )
-
-    // Geolocate (user position) top-right
     map.addControl(
       new vietmapgl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
         trackUserLocation: true,
         showAccuracyCircle: true,
       }),
-      'top-right',
+      'bottom-right',
     )
-
-    // Scale control bottom-left
     map.addControl(
-      new vietmapgl.ScaleControl({
-        maxWidth: 100,
-        unit: 'metric',
-      }),
+      new vietmapgl.NavigationControl({ showZoom: true, showCompass: true }),
+      'bottom-right',
+    )
+    map.addControl(
+      new vietmapgl.ScaleControl({ maxWidth: 100, unit: 'metric' }),
       'bottom-left',
     )
+    map.addControl(new vietmapgl.FullscreenControl(), 'bottom-right')
 
-    // Fullscreen control top-right
-    map.addControl(new vietmapgl.FullscreenControl(), 'top-right')
+    // Click Map -> Reverse Geocoding
+    const handleMapClick = async (e) => {
+      const state = activeStateRef.current
+      if ((state.mode === 'browse' && state.focusedInput === 'search') || 
+          (state.mode === 'route' && state.focusedPointIndex !== null)) {
+        try {
+          const { lng, lat } = e.lngLat
+          const result = await apiService.reverseGeocode(lat, lng, apiKey)
+          if (result && result.ref_id) {
+            const place = await apiService.getPlaceDetail(result.ref_id, apiKey)
+            const placeData = { ...place, lat, lng }
+            
+            if (state.mode === 'browse') {
+               setSelectedPlace(placeData)
+               setSearchQuery(placeData.display)
+               setMarker(placeMarkerRef, [lng, lat], '#ef4444')
+               setFocusedInput(null)
+               setSuggestions([])
+               setIsSuggestOpen(false)
+               map.flyTo({ center: [lng, lat], zoom: 16 })
+            } else if (state.mode === 'route' && state.focusedPointIndex !== null) {
+               const newPoints = [...state.routePoints]
+               newPoints[state.focusedPointIndex] = {
+                 ...newPoints[state.focusedPointIndex],
+                 place: placeData,
+                 query: placeData.display
+               }
+               setRoutePoints(newPoints)
+               setFocusedPointIndex(null)
+               setSuggestions([])
+               setIsSuggestOpen(false)
+               map.flyTo({ center: [lng, lat], zoom: 16 })
+            }
+          }
+        } catch(err) {
+          console.error('Lỗi lấy địa chỉ:', err)
+        }
+      }
+    }
+    map.on('click', handleMapClick)
 
     return () => {
       if (placeMarkerRef.current) placeMarkerRef.current.remove()
-      if (startMarkerRef.current) startMarkerRef.current.remove()
-      if (endMarkerRef.current) endMarkerRef.current.remove()
+      routeMarkersRef.current.forEach(m => m.remove())
+      map.off('click', handleMapClick)
       map.remove()
       mapRef.current = null
     }
-  }, [styleUrl])
+  }, [styleUrl, apiKey])
 
+  // Lắng nghe thay đổi query để gợi ý (Autocomplete)
   useEffect(() => {
-    if (!apiKey || !isSuggestOpen || !focusedInput) return
-    const query =
-      focusedInput === 'search' ? searchQuery.trim() : focusedInput === 'start' ? startQuery.trim() : endQuery.trim()
-
+    if (!apiKey || !isSuggestOpen) return
+    let query = ''
+    if (mode === 'browse' && focusedInput === 'search') {
+       query = searchQuery
+    } else if (mode === 'route' && focusedPointIndex !== null) {
+       query = routePoints[focusedPointIndex]?.query || ''
+    }
+    query = query.trim()
+    
     if (query.length < 2) {
       setSuggestions([])
       return
@@ -143,11 +199,8 @@ export default function App() {
         setIsSearching(true)
         const center = mapRef.current?.getCenter()
         const focus = center ? `${center.lat},${center.lng}` : `${DEFAULT_CENTER[1]},${DEFAULT_CENTER[0]}`
-
         const data = await apiService.searchAutocomplete(query, focus, apiKey)
-        if (!controller.signal.aborted) {
-          setSuggestions(data)
-        }
+        if (!controller.signal.aborted) setSuggestions(data)
       } catch (err) {
         if (err.name !== 'AbortError') setSuggestions([])
       } finally {
@@ -159,14 +212,7 @@ export default function App() {
       controller.abort()
       clearTimeout(timeout)
     }
-  }, [apiKey, endQuery, focusedInput, isSuggestOpen, searchQuery, startQuery])
-
-  const removeRouteLayer = () => {
-    const map = mapRef.current
-    if (!map) return
-    if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID)
-    if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID)
-  }
+  }, [apiKey, isSuggestOpen, searchQuery, focusedInput, focusedPointIndex, routePoints, mode])
 
   const setMarker = (refObj, lngLat, color) => {
     const map = mapRef.current
@@ -176,6 +222,59 @@ export default function App() {
     } else {
       refObj.current.setLngLat(lngLat)
     }
+  }
+
+  const syncRouteMarkers = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    routeMarkersRef.current.forEach(m => m.remove());
+    routeMarkersRef.current = [];
+    
+    routePoints.forEach((pt, idx) => {
+      if (pt.place) {
+        const color = idx === 0 ? '#1d4ed8' : (idx === routePoints.length - 1 ? '#ef4444' : '#f59e0b');
+        const marker = new vietmapgl.Marker({ color, draggable: true })
+          .setLngLat([pt.place.lng, pt.place.lat])
+          .addTo(map);
+          
+        marker.on('dragend', async () => {
+          const lngLat = marker.getLngLat();
+          try {
+            const result = await apiService.reverseGeocode(lngLat.lat, lngLat.lng, apiKey);
+            if (result && result.ref_id) {
+               const place = await apiService.getPlaceDetail(result.ref_id, apiKey);
+               const placeData = { ...place, lat: lngLat.lat, lng: lngLat.lng };
+               setRoutePoints(prev => {
+                 const newPoints = [...prev];
+                 newPoints[idx] = {
+                   ...newPoints[idx],
+                   place: placeData,
+                   query: placeData.display
+                 };
+                 return newPoints;
+               });
+            }
+          } catch(err) {
+            console.error('Lỗi khi kéo thả marker:', err);
+          }
+        });
+        
+        routeMarkersRef.current.push(marker);
+      }
+    });
+  }, [routePoints, apiKey]);
+
+  useEffect(() => {
+    if (mode === 'route') {
+      syncRouteMarkers();
+    }
+  }, [routePoints, mode, syncRouteMarkers]);
+
+  const removeRouteLayer = () => {
+    const map = mapRef.current
+    if (!map) return
+    if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID)
+    if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID)
   }
 
   const drawRoute = (coordinates) => {
@@ -201,67 +300,142 @@ export default function App() {
     map.fitBounds(bounds, { padding: 80, duration: 450 })
   }
 
-  const handleSelectSuggestion = async (item) => {
+  const handleSelectSuggestion = async (item, pointIndex = null) => {
     if (!item?.ref_id || !apiKey) return
     try {
       setError('')
       const place = await apiService.getPlaceDetail(item.ref_id, apiKey)
       const lngLat = [place.lng, place.lat]
 
-      if (focusedInput === 'search') {
+      if (mode === 'browse' && focusedInput === 'search') {
         setSelectedPlace(place)
         setSearchQuery(place.display)
         setMarker(placeMarkerRef, lngLat, '#ef4444')
-      } else if (focusedInput === 'start') {
-        setSelectedStart(place)
-        setStartQuery(place.display)
-        setMarker(startMarkerRef, lngLat, '#1d4ed8')
-      } else {
-        setSelectedEnd(place)
-        setEndQuery(place.display)
-        setMarker(endMarkerRef, lngLat, '#ef4444')
+        mapRef.current?.flyTo({ center: lngLat, zoom: 16, essential: true })
+      } else if (mode === 'route' && pointIndex !== null) {
+        const newPoints = [...routePoints]
+        newPoints[pointIndex] = {
+          ...newPoints[pointIndex],
+          place: place,
+          query: place.display
+        }
+        setRoutePoints(newPoints)
+        mapRef.current?.flyTo({ center: lngLat, zoom: 16, essential: true })
       }
 
-      mapRef.current?.flyTo({ center: lngLat, zoom: 16, essential: true })
       setSuggestions([])
       setIsSuggestOpen(false)
       setFocusedInput(null)
-      setRouteInfo(null)
-      setInstructions([])
-      setShowSteps(false)
-      removeRouteLayer()
+      setFocusedPointIndex(null)
+      
+      if (mode === 'browse') {
+        setRouteInfo(null)
+        setInstructions([])
+        setShowSteps(false)
+        removeRouteLayer()
+      }
     } catch (err) {
       setError(err.message || 'Không thể chọn địa điểm.')
     }
   }
 
-  const handleOpenDirection = useCallback(async () => {
+  // Handle Enter Key (Geocode Search)
+  const handleKeyDown = async (e, pointIndex = null) => {
+    if (e.key === 'Enter') {
+      const query = pointIndex !== null ? routePoints[pointIndex].query : searchQuery;
+      if (!query || query.length < 2) return;
+      
+      try {
+        setIsSearching(true);
+        const center = mapRef.current?.getCenter()
+        const focus = center ? `${center.lat},${center.lng}` : null
+        
+        const results = await apiService.searchGeocode(query, focus, apiKey)
+        if (results && results.length > 0) {
+          await handleSelectSuggestion(results[0], pointIndex)
+        } else {
+          setError('Không tìm thấy kết quả nào.')
+        }
+      } catch (err) {
+        setError(err.message || 'Lỗi tìm kiếm.')
+      } finally {
+        setIsSearching(false)
+      }
+    }
+  }
+
+  const handleOpenDirection = useCallback(() => {
     setMode('route')
-    setFocusedInput('start')
+    setFocusedPointIndex(0)
     setIsSuggestOpen(false)
     setSuggestions([])
 
+    const initialPoints = [
+      { id: 'start', place: null, query: '' },
+      { id: 'end', place: null, query: '' }
+    ]
+
     if (selectedPlace) {
-      setSelectedEnd(selectedPlace)
-      setEndQuery(selectedPlace.display)
+      initialPoints[1] = {
+        id: 'end',
+        place: selectedPlace,
+        query: selectedPlace.display
+      }
+    }
+    setRoutePoints(initialPoints)
+    if (placeMarkerRef.current) {
+       placeMarkerRef.current.remove()
+       placeMarkerRef.current = null
     }
   }, [selectedPlace])
 
-  useEffect(() => {
-    routeActionRef.current = handleOpenDirection
-  }, [handleOpenDirection])
+  const handleStopDirection = () => {
+    setMode('browse')
+    setFocusedInput('search')
+    setIsSuggestOpen(false)
+    setSuggestions([])
+    setRouteInfo(null)
+    setInstructions([])
+    setTolls([])
+    setShowSteps(false)
+    removeRouteLayer()
+    routeMarkersRef.current.forEach(m => m.remove())
+    routeMarkersRef.current = []
 
-
-
-  const handleSwap = () => {
-    setStartQuery(endQuery)
-    setEndQuery(startQuery)
-    setSelectedStart(selectedEnd)
-    setSelectedEnd(selectedStart)
+    const destination = routePoints[routePoints.length - 1]?.place
+    if (destination) {
+      setSelectedPlace(destination)
+      setSearchQuery(destination.display || '')
+      setMarker(placeMarkerRef, [destination.lng, destination.lat], '#ef4444')
+    } else {
+       setSelectedPlace(null)
+       setSearchQuery('')
+    }
   }
 
-  const fetchRoute = async () => {
-    if (!selectedStart || !selectedEnd) {
+  const handleAddStop = () => {
+    const newPoints = [...routePoints]
+    newPoints.splice(newPoints.length - 1, 0, { id: Date.now().toString(), place: null, query: '' })
+    setRoutePoints(newPoints)
+  }
+
+  const handleRemoveStop = (index) => {
+    if (routePoints.length <= 2) return
+    const newPoints = [...routePoints]
+    newPoints.splice(index, 1)
+    setRoutePoints(newPoints)
+  }
+
+  const handleSwap = () => {
+    const newPoints = [...routePoints].reverse()
+    setRoutePoints(newPoints)
+  }
+
+  // Tự động tìm đường khi có đủ điểm
+  useEffect(() => {
+    if (mode !== 'route') return
+    const validPoints = routePoints.filter(p => p.place)
+    if (validPoints.length < 2) {
       setRouteInfo(null)
       setInstructions([])
       setTolls([])
@@ -269,18 +443,63 @@ export default function App() {
       return
     }
 
+    const timeout = setTimeout(() => {
+      fetchRoute()
+    }, 500)
+
+    return () => clearTimeout(timeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, routePoints, vehicle])
+
+  const fetchRoute = async () => {
+    // Tự động geocode các điểm chưa có tọa độ (place)
+    const updatedPoints = [...routePoints];
+    let hasChanges = false;
+    
+    for (let i = 0; i < updatedPoints.length; i++) {
+      const pt = updatedPoints[i];
+      if (!pt.place && pt.query.trim().length > 0) {
+        try {
+          setIsSearching(true);
+          const center = mapRef.current?.getCenter();
+          const focus = center ? `${center.lat},${center.lng}` : null;
+          const results = await apiService.searchGeocode(pt.query, focus, apiKey);
+          if (results && results.length > 0) {
+            const place = await apiService.getPlaceDetail(results[0].ref_id, apiKey);
+            updatedPoints[i].place = place;
+            updatedPoints[i].query = place.display;
+            hasChanges = true;
+          }
+        } catch(err) {
+          console.error('Lỗi tự động geocode:', err);
+        } finally {
+          setIsSearching(false);
+        }
+      }
+    }
+    
+    if (hasChanges) {
+      setRoutePoints(updatedPoints);
+      // Khi state thay đổi, useEffect auto route sẽ tự động gọi lại fetchRoute!
+      return; 
+    }
+
+    const validPoints = updatedPoints.filter(p => p.place)
+    if (validPoints.length < 2) {
+      setRouteInfo(null)
+      setInstructions([])
+      setTolls([])
+      removeRouteLayer()
+      setError('Vui lòng chọn hoặc nhập ít nhất 2 địa điểm hợp lệ.')
+      return
+    }
+
     try {
       setIsRouting(true)
       setError('')
 
-      const routeData = await apiService.getRoute(
-        selectedStart.lat,
-        selectedStart.lng,
-        selectedEnd.lat,
-        selectedEnd.lng,
-        vehicle,
-        apiKey,
-      )
+      const pointsCoords = validPoints.map(p => p.place)
+      const routeData = await apiService.getRoute(pointsCoords, vehicle, apiKey)
 
       const coordinates = extractCoordinates(routeData.points)
       if (coordinates.length < 2) throw new Error('Dữ liệu tuyến đường không hợp lệ.')
@@ -292,15 +511,8 @@ export default function App() {
       })
       setInstructions(routeData.instructions)
 
-      // Lấy phí cao tốc nếu là ô tô
       if (vehicle === 'car') {
-        const tollList = await apiService.getRouteTolls(
-          selectedStart.lng,
-          selectedStart.lat,
-          selectedEnd.lng,
-          selectedEnd.lat,
-          apiKey,
-        )
+        const tollList = await apiService.getRouteTolls(pointsCoords, apiKey)
         setTolls(tollList)
       } else {
         setTolls([])
@@ -326,237 +538,313 @@ export default function App() {
     }
   }
 
-  const handleStopDirection = () => {
-    const destination = selectedEnd || selectedPlace
-    setMode('browse')
-    setFocusedInput('search')
-    setIsSuggestOpen(false)
-    setSuggestions([])
-    setRouteInfo(null)
-    setInstructions([])
-    setTolls([])
-    setShowSteps(false)
-    setSelectedStart(null)
-    setSelectedEnd(null)
-    setStartQuery('')
-    setEndQuery('')
-    removeRouteLayer()
-
-    if (startMarkerRef.current) {
-      startMarkerRef.current.remove()
-      startMarkerRef.current = null
-    }
-    if (endMarkerRef.current) {
-      endMarkerRef.current.remove()
-      endMarkerRef.current = null
-    }
-
-    if (destination) {
-      setSelectedPlace(destination)
-      setSearchQuery(destination.display || '')
-      setMarker(placeMarkerRef, [destination.lng, destination.lat], '#ef4444')
-    }
-  }
-
-  useEffect(() => {
-    if (mode !== 'route') return
-
-    const timeout = setTimeout(() => {
-      fetchRoute()
-    }, 250)
-
-    return () => clearTimeout(timeout)
-  }, [mode, selectedStart, selectedEnd, vehicle])
-
   return (
-    <div className="screen">
-      <div ref={mapContainerRef} className="map" />
+    <div className="screen relative overflow-hidden h-screen w-full font-sans bg-slate-50">
+      <div ref={mapContainerRef} className="absolute inset-0 z-0" />
 
-      {!apiKey && <div className="floating-error">Thiếu VITE_VIETMAP_API_KEY trong .env.</div>}
-      {error && <div className="floating-error second">{error}</div>}
+      {!apiKey && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg">Thiếu VITE_VIETMAP_API_KEY trong .env.</div>}
+      {error && <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg">{error}</div>}
 
+      {/* CHẾ ĐỘ BROWSE - THANH TÌM KIẾM */}
       {mode === 'browse' && (
-        <div className="top-search">
-          <input
-            value={searchQuery}
-            onFocus={() => setFocusedInput('search')}
-            onChange={(e) => {
-              setFocusedInput('search')
-              setSearchQuery(e.target.value)
-              setSelectedPlace(null)
-              setIsSuggestOpen(true)
-            }}
-            placeholder="Nhập từ khoá để tìm kiếm"
-          />
-          <div className="chips">
-            {CATEGORY_TAGS.map((tag) => (
-              <span key={tag}>{tag}</span>
-            ))}
+        <div className="search-ui-container absolute z-20 top-[max(16px,env(safe-area-inset-top))] left-4 flex gap-3">
+          <button className="w-11 h-11 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.12)] flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-colors shrink-0">
+            <i className="fa-solid fa-bars text-lg"></i>
+          </button>
+
+          <div className="relative flex flex-col w-[360px] max-w-[calc(100vw-80px)]">
+            <div className={`relative flex items-center bg-white shadow-[0_2px_8px_rgba(0,0,0,0.12)] z-10 ${
+              isSuggestOpen && suggestions.length > 0 && searchQuery ? 'rounded-t-2xl rounded-b-none border-b border-slate-100' : 'rounded-2xl'
+            } ${focusedInput === 'search' ? 'ring-2 ring-blue-500' : ''}`}>
+              <i className="fa-solid fa-magnifying-glass absolute left-4 text-slate-400 text-[15px] pointer-events-none"></i>
+              <input
+                className="w-full bg-transparent border-none py-3 pl-11 pr-10 text-[15px] outline-none text-slate-800 placeholder-slate-400"
+                value={searchQuery}
+                onFocus={() => setFocusedInput('search')}
+                onChange={(e) => {
+                  setFocusedInput('search')
+                  setSearchQuery(e.target.value)
+                  setSelectedPlace(null)
+                  setIsSuggestOpen(true)
+                }}
+                onKeyDown={(e) => handleKeyDown(e, null)}
+                placeholder={searchQuery ? '' : 'Tìm kiếm địa điểm'}
+              />
+              {searchQuery && (
+                <button className="absolute right-3 p-1 text-slate-400 hover:text-slate-600 bg-transparent border-none cursor-pointer" onClick={() => { setSearchQuery(''); setSuggestions([]); }}>
+                  <i className="fa-solid fa-xmark text-lg"></i>
+                </button>
+              )}
+            </div>
+
+            {/* Suggestions Dropdown (Browse) */}
+            {isSuggestOpen && focusedInput === 'search' && suggestions.length > 0 && (
+              <div className="bg-white rounded-b-2xl shadow-[0_8px_24px_rgba(0,0,0,0.15)] overflow-hidden flex flex-col mt-[-1px]">
+                <ul className="m-0 p-0 list-none max-h-[320px] overflow-y-auto">
+                  {suggestions.map((item) => (
+                    <li key={item.ref_id} className="border-b border-slate-100 last:border-b-0">
+                      <button 
+                        type="button" 
+                        onClick={() => handleSelectSuggestion(item, null)}
+                        className="w-full text-left bg-white border-none py-3 px-4 flex gap-3 hover:bg-slate-50 transition-colors cursor-pointer items-start"
+                      >
+                        <i className="fa-solid fa-location-dot text-slate-400 mt-1 text-[15px]"></i>
+                        <div className="flex-1 flex flex-col">
+                          <strong className="text-[15px] font-medium text-slate-800 font-sans leading-tight mb-1">{item.name || item.display}</strong>
+                          <span className="text-[13px] text-slate-500 leading-snug">{item.address}</span>
+                          {item.oldAddress && <span className="text-[13px] text-blue-500 mt-1 leading-snug">Mới: {item.oldAddress}</span>}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="py-3 text-center border-t border-slate-100 text-[13px] bg-slate-50/50">
+                  <a href="#!" onClick={(e) => e.preventDefault()} className="text-red-500 hover:underline cursor-pointer decoration-transparent">Báo lỗi tìm kiếm</a>
+                  <span className="mx-2 text-slate-300">•</span>
+                  <a href="#!" onClick={(e) => e.preventDefault()} className="text-blue-500 hover:underline cursor-pointer decoration-transparent">Đăng kí API key</a>
+                </div>
+              </div>
+            )}
           </div>
-          {isSearching && <p className="hint">Đang tải gợi ý...</p>}
-          {isSuggestOpen && focusedInput === 'search' && suggestions.length > 0 && (
-            <ul className="suggestions">
-              {suggestions.map((item) => (
-                <li key={item.ref_id}>
-                  <button type="button" onClick={() => handleSelectSuggestion(item)}>
-                    <strong>{item.name || item.display}</strong>
-                    <span>{item.address}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       )}
 
+      {/* CHẾ ĐỘ ROUTE - SIDEBAR BÊN TRÁI */}
+      {mode === 'route' && (
+        <div className="search-ui-container absolute top-0 left-0 bottom-0 w-[400px] max-w-full bg-slate-50 z-30 shadow-[4px_0_24px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden">
+          {/* Header Xanh */}
+          <div className="bg-blue-600 pt-8 pb-4 px-4 relative flex-shrink-0">
+            <button 
+              onClick={handleStopDirection} 
+              className="absolute top-4 right-4 w-8 h-8 bg-white rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 shadow"
+            >
+              <i className="fa-solid fa-xmark"></i>
+            </button>
+            <div className="text-white text-[15px] font-medium mb-4">Phương tiện di chuyển</div>
+            
+            <div className="flex gap-2 bg-white/10 p-1.5 rounded-lg shadow-sm">
+              {VEHICLES.map((item) => (
+                <button
+                  key={item.key}
+                  className={`flex-1 py-2.5 rounded-md flex items-center justify-center gap-2 text-[14px] font-medium transition-colors ${
+                    item.key === vehicle 
+                      ? 'bg-slate-900 text-white shadow-sm' 
+                      : 'text-white hover:bg-white/20'
+                  }`}
+                  onClick={() => setVehicle(item.key)}
+                >
+                  <i className={item.icon} />
+                  <span className="hidden sm:inline">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 relative">
+            
+            {/* Input Points */}
+            <div className="relative flex flex-col gap-3">
+              {routePoints.map((pt, index) => (
+                <div key={pt.id} className={`relative flex items-center gap-3 ${focusedPointIndex === index ? 'z-50' : 'z-10'}`}>
+                  <div className="flex flex-col items-center justify-center w-5 shrink-0 relative h-full">
+                    {index < routePoints.length - 1 && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-[2px] h-[calc(100%+12px)] bg-slate-300 z-0"></div>}
+                    <div className="bg-slate-50 py-1 z-10">
+                      <i className={`fa-solid text-[14px] ${index === 0 ? 'fa-circle-dot text-blue-600' : index === routePoints.length - 1 ? 'fa-location-dot text-red-500' : 'fa-circle text-amber-500'}`}></i>
+                    </div>
+                  </div>
+                  
+                  <div className={`relative flex-1 bg-white rounded-lg border transition-colors shadow-sm ${focusedPointIndex === index ? 'ring-2 ring-blue-500 border-transparent z-20' : 'border-slate-200 z-10'}`}>
+                    <input 
+                      className="w-full bg-transparent text-[14px] py-3 pl-3 pr-8 outline-none text-slate-800 placeholder-slate-400"
+                      placeholder={index === 0 ? 'Vị trí bắt đầu' : index === routePoints.length - 1 ? 'Chọn điểm đến' : 'Điểm dừng...'}
+                      value={pt.query}
+                      onFocus={() => {
+                        setFocusedPointIndex(index)
+                        setIsSuggestOpen(true)
+                      }}
+                      onChange={(e) => {
+                        setFocusedPointIndex(index)
+                        setIsSuggestOpen(true)
+                        const newPoints = [...routePoints]
+                        newPoints[index].query = e.target.value
+                        newPoints[index].place = null
+                        setRoutePoints(newPoints)
+                      }}
+                      onKeyDown={(e) => handleKeyDown(e, index)}
+                    />
+                    {pt.query && (
+                      <button 
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                        onClick={() => {
+                          const newPoints = [...routePoints]
+                          newPoints[index].query = ''
+                          newPoints[index].place = null
+                          setRoutePoints(newPoints)
+                        }}
+                      >
+                         <i className="fa-solid fa-xmark"></i>
+                      </button>
+                    )}
+
+                    {/* Inline Suggestions Dropdown */}
+                    {isSuggestOpen && focusedPointIndex === index && suggestions.length > 0 && (
+                      <div className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.2)] border border-slate-100 overflow-hidden z-[100]">
+                         <ul className="m-0 p-0 list-none max-h-[300px] overflow-y-auto">
+                            {suggestions.map((item) => (
+                              <li key={item.ref_id} className="border-b border-slate-50 last:border-0">
+                                <button 
+                                  className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-start gap-3 transition-colors"
+                                  onClick={() => handleSelectSuggestion(item, focusedPointIndex)}
+                                >
+                                  <i className="fa-solid fa-location-dot text-slate-400 mt-1"></i>
+                                  <div className="flex-1">
+                                    <div className="font-medium text-slate-800 text-[14px]">{item.name || item.display}</div>
+                                    <div className="text-[13px] text-slate-500 leading-snug">{item.address}</div>
+                                  </div>
+                                </button>
+                              </li>
+                            ))}
+                         </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {routePoints.length > 2 && (
+                    <button 
+                      className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors shrink-0 shadow-sm border border-slate-200 bg-white"
+                      onClick={() => handleRemoveStop(index)}
+                      title="Xóa điểm"
+                    >
+                      <i className="fa-solid fa-minus"></i>
+                    </button>
+                  )}
+                  {routePoints.length <= 2 && (
+                    <div className="w-8 shrink-0"></div>
+                  )}
+                </div>
+              ))}
+
+              <button 
+                className="absolute right-9 top-1/2 -translate-y-1/2 w-8 h-8 bg-white border border-slate-200 rounded-full shadow flex items-center justify-center text-slate-600 hover:bg-slate-50 z-20"
+                onClick={handleSwap}
+                title="Đảo chiều"
+              >
+                <i className="fa-solid fa-arrow-up-arrow-down text-[13px]"></i>
+              </button>
+            </div>
+
+            <button 
+              className="w-full py-3 border border-slate-300 rounded-lg text-slate-600 font-medium hover:bg-slate-100 flex items-center justify-center gap-2 text-[14px] transition-colors mt-2"
+              onClick={handleAddStop}
+            >
+              <i className="fa-solid fa-plus"></i> Thêm điểm dừng
+            </button>
+
+            <button 
+              className="w-full py-3 bg-slate-900 text-white rounded-lg font-medium hover:bg-black flex items-center justify-center gap-2 text-[15px] shadow-md transition-colors mt-2"
+              onClick={fetchRoute}
+              disabled={isRouting}
+            >
+              {isRouting ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-paper-plane"></i>}
+              {isRouting ? 'Đang tìm...' : 'Tìm đường'}
+            </button>
+
+            {/* Removed Global Suggestions Overlay */}
+
+            {/* Lộ trình khả dụng */}
+            {routeInfo && (
+              <div className="mt-4 bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                <div className="text-[13px] font-semibold text-slate-500 uppercase tracking-wide mb-3">Lộ trình khả dụng</div>
+                <div className="flex gap-4">
+                  <div className="w-2 rounded-full bg-blue-500"></div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-end mb-1">
+                      <span className="text-2xl font-semibold text-slate-800">{routeInfo.distanceKm} km</span>
+                      <span className="text-lg text-slate-600">{routeInfo.durationMin} phút</span>
+                    </div>
+                    {vehicle === 'car' && (
+                      <div className="text-[13px] text-slate-500 mt-1">
+                        Phí cao tốc: <strong className="text-slate-700">{tollTotal > 0 ? `${tollTotal.toLocaleString('vi-VN')} đ` : '0 đ'}</strong>
+                      </div>
+                    )}
+                    <button 
+                      className="mt-4 w-full py-2 bg-slate-50 border border-slate-200 rounded-md text-[14px] font-medium text-slate-700 hover:bg-slate-100 flex items-center justify-center gap-2"
+                      onClick={() => setShowSteps(!showSteps)}
+                    >
+                      <i className="fa-regular fa-map"></i> {showSteps ? 'Ẩn chi tiết' : 'Xem chi tiết'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Steps Dropdown */}
+                {showSteps && (
+                   <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-3">
+                      {instructions.map((step, idx) => (
+                         <div key={idx} className="flex gap-3 text-[14px]">
+                           <i className="fa-solid fa-arrow-turn-up text-slate-400 mt-1"></i>
+                           <div className="flex-1">
+                             <div className="text-slate-800 font-medium">{step.text}</div>
+                             <div className="text-slate-500 text-[13px]">{Math.round(step.distance)} m</div>
+                           </div>
+                         </div>
+                      ))}
+                   </div>
+                )}
+              </div>
+            )}
+            
+          </div>
+        </div>
+      )}
+
+      {/* Floating Buttons */}
       {mode === 'browse' && (
         <button
           type="button"
-          className="floating-route-btn"
+          className="absolute z-20 top-20 left-4 w-11 h-11 bg-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.15)] flex items-center justify-center text-blue-600 hover:bg-slate-50 transition-colors"
           onClick={handleOpenDirection}
-          title="Tìm đường 2 điểm"
+          title="Tìm đường"
         >
-          <i className="fa-solid fa-route" aria-hidden="true" />
+          <i className="fa-solid fa-route text-lg" aria-hidden="true" />
         </button>
       )}
 
-      <div className="tilemap-styles-selector">
-        {TILEMAP_STYLES.map((item) => (
-          <button
-            key={item.key}
-            className={item.key === tilemapStyle ? 'active' : ''}
-            type="button"
-            onClick={() => handleChangeTilemapStyle(item.key)}
-            title={item.label}
-          >
-            <i className={item.icon} aria-hidden="true" />
-          </button>
-        ))}
-      </div>
-
-      {mode === 'route' && (
-        <div className="route-header">
-          <div className="route-inputs">
-            <input
-              value={startQuery}
-              className="route-start-input"
-              onFocus={() => {
-                setFocusedInput('start')
-                setIsSuggestOpen(true)
-              }}
-              onChange={(e) => {
-                setFocusedInput('start')
-                setStartQuery(e.target.value)
-                setSelectedStart(null)
-                setIsSuggestOpen(true)
-              }}
-              placeholder="Vị trí của bạn"
-            />
-            <input
-              value={endQuery}
-              className="route-end-input"
-              onFocus={() => {
-                setFocusedInput('end')
-                setIsSuggestOpen(true)
-              }}
-              onChange={(e) => {
-                setFocusedInput('end')
-                setEndQuery(e.target.value)
-                setSelectedEnd(null)
-                setIsSuggestOpen(true)
-              }}
-              placeholder="Nhập điểm đến"
-            />
-            <button type="button" className="swap-btn" onClick={handleSwap}>
-              <i className="fa-solid fa-arrow-up-arrow-down" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="vehicle-tabs">
-            {VEHICLES.map((item) => (
-              <button
-                key={item.key}
-                className={item.key === vehicle ? 'active' : ''}
-                type="button"
-                onClick={() => setVehicle(item.key)}
-              >
-                <i className={item.icon} aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-
-          {isRouting && <p className="hint">Đang tự động tìm tuyến đường...</p>}
-
-          {isSuggestOpen && (focusedInput === 'start' || focusedInput === 'end') && suggestions.length > 0 && (
-            <ul className="suggestions in-route">
-              {suggestions.map((item) => (
-                <li key={`${focusedInput}-${item.ref_id}`}>
-                  <button type="button" onClick={() => handleSelectSuggestion(item)}>
-                    <strong>{item.name || item.display}</strong>
-                    <span>{item.address}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
       {mode === 'browse' && selectedPlace && (
-        <div className="bottom-card">
-          <h3>{selectedPlace.display}</h3>
-          <p>{selectedPlace.address}</p>
-          <div className="actions">
-            <button type="button" className="primary" onClick={handleOpenDirection}>
-              Chỉ đường
+        <div className="absolute z-20 bottom-8 left-1/2 -translate-x-1/2 w-[340px] bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-4 flex flex-col gap-2">
+          <h3 className="m-0 text-lg font-semibold text-slate-800">{selectedPlace.display}</h3>
+          <p className="m-0 text-[14px] text-slate-500">{selectedPlace.address}</p>
+          <div className="flex gap-2 mt-2">
+            <button 
+              type="button" 
+              className="flex-1 bg-blue-600 text-white font-medium py-2.5 rounded-lg hover:bg-blue-700 transition-colors" 
+              onClick={handleOpenDirection}
+            >
+              <i className="fa-solid fa-route mr-2"></i> Chỉ đường
             </button>
-            <button type="button">Bắt đầu</button>
+            <button type="button" className="flex-1 bg-slate-100 text-slate-700 font-medium py-2.5 rounded-lg hover:bg-slate-200 transition-colors">
+               Lưu
+            </button>
           </div>
         </div>
       )}
 
-      {mode === 'route' && routeInfo && (
-        <div className="bottom-card route-info">
-          <h3>
-            {routeInfo.durationMin} phút <span>({routeInfo.distanceKm} km)</span>
-          </h3>
-          <p>Tuyến đường tốt nhất</p>
-          {vehicle === 'car' && (
-            <p className="toll-summary">
-              Phí cao tốc:{' '}
-              <strong>{tollTotal > 0 ? `${tollTotal.toLocaleString('vi-VN')} đ` : 'Chưa có dữ liệu phí'}</strong>
-            </p>
-          )}
-          <div className="actions">
-            <button type="button" onClick={() => setShowSteps((prev) => !prev)}>
-              {showSteps ? 'Ẩn chặng' : 'Các chặng'}
-            </button>
-            <button type="button" className="primary" onClick={handleStopDirection}>
-              Tắt tìm đường
-            </button>
-          </div>
-          {showSteps && (
-            <div className="steps">
-              {vehicle === 'car' && tolls.length > 0 && (
-                <div className="step toll-step">
-                  <strong>Các trạm thu phí</strong>
-                  {tolls.map((item, idx) => (
-                    <span key={`${item?.name || 'toll'}-${idx}`}>
-                      {item?.name}: {Number(item?.amount || 0).toLocaleString('vi-VN')} đ
-                    </span>
-                  ))}
-                </div>
-              )}
-              {instructions.slice(0, 8).map((step, index) => (
-                <div key={`${index}-${step?.text || ''}`} className="step">
-                  <strong>{step?.text || 'Đi tiếp'}</strong>
-                  <span>{Math.max(0, Math.round(step?.distance || 0))} m</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Map Style Controls */}
+      <div className="absolute z-20 bottom-8 left-4 flex flex-col gap-2 bg-white p-1.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.1)]">
+        <button 
+          className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${tilemapStyle === 'vectorDefault' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+          onClick={() => handleChangeTilemapStyle('vectorDefault')}
+        >
+          Vector
+        </button>
+        <button 
+          className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${tilemapStyle === 'satellite' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+          onClick={() => handleChangeTilemapStyle('satellite')}
+        >
+          Raster
+        </button>
+      </div>
+      
     </div>
   )
 }

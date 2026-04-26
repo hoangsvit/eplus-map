@@ -16,17 +16,18 @@ export const apiService = {
     if (!Array.isArray(data)) return []
 
     // Enriched suggestions với địa chỉ cũ
+    const self = this
     const enrichedData = await Promise.all(
       data.map(async (item) => {
         try {
           // Migrate address để lấy định dạng cũ
-          const migrated = await this.migrateAddressNewToOld(item.display || item.address, apiKey)
+          const migrated = await self.migrateAddressNewToOld(item.display || item.address, apiKey)
           return {
             ...item,
             oldAddress: migrated.address,
             oldName: migrated.name,
           }
-        } catch {
+        } catch (err) {
           // Nếu migration thất bại, chỉ trả về suggestion ban đầu
           return {
             ...item,
@@ -63,16 +64,52 @@ export const apiService = {
     }
   },
 
+  // Tìm kiếm theo text (Geocode v4)
+  async searchGeocode(text, focus, apiKey) {
+    const params = new URLSearchParams({
+      apikey: apiKey,
+      text: text,
+      display_type: '1'
+    })
+    if (focus) params.append('focus', focus)
+
+    const response = await fetch(`${API_BASE}/api/search/v4?${params.toString()}`)
+    if (!response.ok) throw new Error('Không thể tìm kiếm địa điểm.')
+    
+    const data = await response.json()
+    return Array.isArray(data) ? data : (data?.data || [])
+  },
+
+  // Lấy địa chỉ từ tọa độ (Reverse v4)
+  async reverseGeocode(lat, lng, apiKey) {
+    const params = new URLSearchParams({
+      apikey: apiKey,
+      lat: lat,
+      lng: lng
+    })
+
+    const response = await fetch(`${API_BASE}/api/reverse/v4?${params.toString()}`)
+    if (!response.ok) throw new Error('Không thể lấy địa chỉ từ tọa độ.')
+    
+    const data = await response.json()
+    const results = Array.isArray(data) ? data : (data?.data || [])
+    return results.length > 0 ? results[0] : null
+  },
+
   // Lấy thông tin tuyến đường
-  async getRoute(startLat, startLng, endLat, endLng, vehicle, apiKey) {
-    const routeVehicle = vehicle === 'car' ? 'car' : vehicle === 'motorcycle' ? 'motorcycle' : 'motorcycle'
+  async getRoute(points, vehicle, apiKey) {
+    const routeVehicle = vehicle === 'car' ? 'car' : vehicle === 'motorcycle' ? 'motorcycle' : vehicle === 'foot' ? 'foot' : vehicle === 'bike' ? 'bike' : 'motorcycle'
     const params = new URLSearchParams({
       apikey: apiKey,
       vehicle: routeVehicle,
       points_encoded: 'false',
     })
-    params.append('point', `${startLat},${startLng}`)
-    params.append('point', `${endLat},${endLng}`)
+    
+    points.forEach(pt => {
+      if (pt && pt.lat && pt.lng) {
+        params.append('point', `${pt.lat},${pt.lng}`)
+      }
+    })
 
     const response = await fetch(`${API_BASE}/api/route/v3?${params.toString()}`)
     if (!response.ok) throw new Error('Không gọi được Route API.')
@@ -94,14 +131,15 @@ export const apiService = {
   },
 
   // Lấy thông tin phí cao tốc (chỉ dành cho ô tô)
-  async getRouteTolls(startLng, startLat, endLng, endLat, apiKey) {
+  async getRouteTolls(points, apiKey) {
     try {
+      const coords = points.map(pt => [pt.lng, pt.lat])
       const response = await fetch(`${API_BASE}/api/route-tolls?api-version=1.1&apikey=${apiKey}&vehicle=1`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify([[startLng, startLat], [endLng, endLat]]),
+        body: JSON.stringify(coords),
       })
 
       if (!response.ok) return []

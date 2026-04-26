@@ -75,7 +75,7 @@ export const apiService = {
 
     const response = await fetch(`${API_BASE}/api/search/v4?${params.toString()}`)
     if (!response.ok) throw new Error('Không thể tìm kiếm địa điểm.')
-    
+
     const data = await response.json()
     return Array.isArray(data) ? data : (data?.data || [])
   },
@@ -90,44 +90,46 @@ export const apiService = {
 
     const response = await fetch(`${API_BASE}/api/reverse/v4?${params.toString()}`)
     if (!response.ok) throw new Error('Không thể lấy địa chỉ từ tọa độ.')
-    
+
     const data = await response.json()
     const results = Array.isArray(data) ? data : (data?.data || [])
     return results.length > 0 ? results[0] : null
   },
 
-  // Lấy thông tin tuyến đường
+  // Lấy thông tin tuyến đường (hỗ trợ nhiều đường đi)
   async getRoute(points, vehicle, apiKey) {
     const routeVehicle = vehicle === 'car' ? 'car' : vehicle === 'motorcycle' ? 'motorcycle' : vehicle === 'foot' ? 'foot' : vehicle === 'bike' ? 'bike' : 'motorcycle'
     const params = new URLSearchParams({
       apikey: apiKey,
       vehicle: routeVehicle,
       points_encoded: 'false',
+      alternatives: 'true',
+      'ch.disable': 'true' // Bắt buộc để dùng alternatives
     })
-    
+
     points.forEach(pt => {
       if (pt && pt.lat && pt.lng) {
         params.append('point', `${pt.lat},${pt.lng}`)
       }
     })
 
-    const response = await fetch(`${API_BASE}/api/route/v3?${params.toString()}`)
+    const response = await fetch(`${API_BASE}/api/route/v4?${params.toString()}`)
     if (!response.ok) throw new Error('Không gọi được Route API.')
 
     const data = await response.json()
     if (data?.code && data.code !== 'OK') {
-      throw new Error(data?.messages || `Route v3 lỗi: ${data.code}`)
+      throw new Error(data?.messages || `Route v4 lỗi: ${data.code}`)
     }
 
-    const path = data?.paths?.[0]
-    if (!path) throw new Error('Không có tuyến đường phù hợp.')
+    if (!data.paths || data.paths.length === 0) throw new Error('Không có tuyến đường phù hợp.')
 
-    return {
+    // Trả về danh sách các đường đi
+    return data.paths.map(path => ({
       points: path.points,
       distance: path.distance,
       time: path.time,
       instructions: Array.isArray(path.instructions) ? path.instructions : [],
-    }
+    }))
   },
 
   // Lấy thông tin phí cao tốc (chỉ dành cho ô tô)
@@ -166,12 +168,12 @@ export const apiService = {
       vectorLight: `${API_BASE}/maps/styles/lm/style.json?apikey=${apiKey}`,
       vectorDark: `${API_BASE}/maps/styles/dm/style.json?apikey=${apiKey}`,
       vectorHybrid: `${API_BASE}/maps/styles/hm/style.json?apikey=${apiKey}`,
-      
+
       // Traffic overlay
       traffic: `${API_BASE}/maps/styles/tf/style.json?apikey=${apiKey}`,
-      
-      // Satellite
-      satellite: `${API_BASE}/maps/tiles/st/{z}/{x}/{y}.png?apikey=${apiKey}`,
+
+      // Satellite (Dùng Hybrid style vì nó chứa cả ảnh vệ tinh và nhãn)
+      satellite: `${API_BASE}/maps/styles/hm/style.json?apikey=${apiKey}`,
     }
   },
 

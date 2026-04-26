@@ -66,10 +66,15 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false)
   const [isRouting, setIsRouting] = useState(false)
   const [routeInfo, setRouteInfo] = useState(null)
+  const [allRoutes, setAllRoutes] = useState([])
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0)
   const [instructions, setInstructions] = useState([])
   const [tolls, setTolls] = useState([])
   const [showSteps, setShowSteps] = useState(false)
   const [error, setError] = useState('')
+  const [showTraffic, setShowTraffic] = useState(true)
+  const [trafficStyle, setTrafficStyle] = useState(null)
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true)
 
   // Track active state for Map click events without re-binding
   const activeStateRef = useRef({ mode, focusedInput, focusedPointIndex, routePoints, searchQuery })
@@ -98,6 +103,56 @@ export default function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Fetch Traffic Style JSON
+  useEffect(() => {
+    if (!apiKey) return;
+    fetch(`https://maps.vietmap.vn/maps/styles/tf/style.json?apikey=${apiKey}`)
+      .then(r => r.json())
+      .then(data => setTrafficStyle(data))
+      .catch(err => console.error('Lỗi tải style giao thông:', err));
+  }, [apiKey]);
+
+  // Apply or Remove Traffic Layer
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !trafficStyle) return;
+
+    const applyTraffic = () => {
+      if (showTraffic) {
+        // Thêm nguồn dữ liệu và các lớp giao thông
+        Object.entries(trafficStyle.sources).forEach(([id, source]) => {
+          if (!map.getSource(id)) map.addSource(id, source);
+        });
+        trafficStyle.layers.forEach(layer => {
+          if (!map.getLayer(layer.id)) map.addLayer(layer);
+        });
+      } else {
+        // Xóa các lớp giao thông
+        trafficStyle.layers.forEach(layer => {
+          if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+        });
+        // Xóa các nguồn dữ liệu
+        Object.keys(trafficStyle.sources).forEach(id => {
+          if (map.getSource(id)) {
+            try { map.removeSource(id); } catch(e) {}
+          }
+        });
+      }
+    };
+
+    // Thực hiện ngay lập tức nếu bản đồ đã load xong style
+    if (map.isStyleLoaded()) {
+      applyTraffic();
+    }
+
+    // Lắng nghe sự kiện style.load để áp dụng lại lớp giao thông khi đổi kiểu bản đồ (Vector <-> Raster)
+    map.on('style.load', applyTraffic);
+
+    return () => {
+      map.off('style.load', applyTraffic);
+    };
+  }, [showTraffic, trafficStyle]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
@@ -264,41 +319,98 @@ export default function App() {
     });
   }, [routePoints, apiKey]);
 
+  const removeRouteLayer = () => {
+    const map = mapRef.current
+    if (!map) return
+    
+    try {
+      const style = map.getStyle();
+      if (style && style.layers) {
+        style.layers.forEach(layer => {
+          if (layer.id.startsWith('route-layer-')) map.removeLayer(layer.id);
+        });
+      }
+      if (style && style.sources) {
+        Object.keys(style.sources).forEach(sourceId => {
+          if (sourceId.startsWith('route-source-')) map.removeSource(sourceId);
+        });
+      }
+    } catch (e) {
+      console.error('Lỗi khi xóa layer route:', e);
+    }
+  }
+
+  const drawRoutes = (routes, selectedIdx) => {
+    const map = mapRef.current
+    if (!map || routes.length === 0) return
+    removeRouteLayer()
+
+    // Vẽ các đường phụ trước (màu xám, mờ)
+    routes.forEach((route, idx) => {
+      if (idx === selectedIdx) return;
+      const coords = extractCoordinates(route.points);
+      if (coords.length < 2) return;
+      
+      const sourceId = `route-source-${idx}`;
+      const layerId = `route-layer-${idx}`;
+      
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } },
+      })
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#94a3b8', 'line-width': 5, 'line-opacity': 0.6 },
+      })
+      
+      // Thêm sự kiện click để chọn đường này
+      map.on('click', layerId, () => {
+        setSelectedRouteIndex(idx);
+      });
+      map.on('mouseenter', layerId, () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', layerId, () => {
+        map.getCanvas().style.cursor = '';
+      });
+    });
+
+    // Vẽ đường chính (màu xanh, trên cùng)
+    const mainRoute = routes[selectedIdx];
+    if (!mainRoute) return;
+    const mainCoords = extractCoordinates(mainRoute.points);
+    if (mainCoords.length >= 2) {
+      const sourceId = `route-source-${selectedIdx}`;
+      const layerId = `route-layer-${selectedIdx}`;
+      
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: mainCoords } },
+      })
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#2f64ff', 'line-width': 7 },
+      })
+
+      const bounds = mainCoords.reduce(
+        (acc, coord) => acc.extend(coord),
+        new vietmapgl.LngLatBounds(mainCoords[0], mainCoords[0]),
+      )
+      map.fitBounds(bounds, { padding: 50 })
+    }
+  }
+
   useEffect(() => {
     if (mode === 'route') {
       syncRouteMarkers();
     }
   }, [routePoints, mode, syncRouteMarkers]);
-
-  const removeRouteLayer = () => {
-    const map = mapRef.current
-    if (!map) return
-    if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID)
-    if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID)
-  }
-
-  const drawRoute = (coordinates) => {
-    const map = mapRef.current
-    if (!map || coordinates.length < 2) return
-    removeRouteLayer()
-    map.addSource(ROUTE_SOURCE_ID, {
-      type: 'geojson',
-      data: { type: 'Feature', geometry: { type: 'LineString', coordinates } },
-    })
-    map.addLayer({
-      id: ROUTE_LAYER_ID,
-      type: 'line',
-      source: ROUTE_SOURCE_ID,
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#2f64ff', 'line-width': 6 },
-    })
-
-    const bounds = coordinates.reduce(
-      (acc, coord) => acc.extend(coord),
-      new vietmapgl.LngLatBounds(coordinates[0], coordinates[0]),
-    )
-    map.fitBounds(bounds, { padding: 80, duration: 450 })
-  }
 
   const handleSelectSuggestion = async (item, pointIndex = null) => {
     if (!item?.ref_id || !apiKey) return
@@ -366,6 +478,7 @@ export default function App() {
 
   const handleOpenDirection = useCallback(() => {
     setMode('route')
+    setIsSidebarVisible(true)
     setFocusedPointIndex(0)
     setIsSuggestOpen(false)
     setSuggestions([])
@@ -499,17 +612,19 @@ export default function App() {
       setError('')
 
       const pointsCoords = validPoints.map(p => p.place)
-      const routeData = await apiService.getRoute(pointsCoords, vehicle, apiKey)
+      const routes = await apiService.getRoute(pointsCoords, vehicle, apiKey)
+      
+      setAllRoutes(routes)
+      setSelectedRouteIndex(0)
 
-      const coordinates = extractCoordinates(routeData.points)
-      if (coordinates.length < 2) throw new Error('Dữ liệu tuyến đường không hợp lệ.')
-
-      drawRoute(coordinates)
+      const mainRoute = routes[0]
       setRouteInfo({
-        distanceKm: (routeData.distance / 1000).toFixed(2),
-        durationMin: Math.round(routeData.time / 60000),
+        distanceKm: (mainRoute.distance / 1000).toFixed(2),
+        durationMin: Math.round(mainRoute.time / 60000),
       })
-      setInstructions(routeData.instructions)
+      setInstructions(mainRoute.instructions)
+
+      drawRoutes(routes, 0)
 
       if (vehicle === 'car') {
         const tollList = await apiService.getRouteTolls(pointsCoords, apiKey)
@@ -522,6 +637,7 @@ export default function App() {
       setIsSuggestOpen(false)
     } catch (err) {
       setError(err.message || 'Không thể tìm đường.')
+      setAllRoutes([])
       setRouteInfo(null)
       setInstructions([])
       setTolls([])
@@ -529,6 +645,21 @@ export default function App() {
       setIsRouting(false)
     }
   }
+
+  // Cập nhật thông tin khi đổi đường đi được chọn
+  useEffect(() => {
+    if (allRoutes.length > 0) {
+      const selected = allRoutes[selectedRouteIndex];
+      if (selected) {
+        setRouteInfo({
+          distanceKm: (selected.distance / 1000).toFixed(2),
+          durationMin: Math.round(selected.time / 60000),
+        });
+        setInstructions(selected.instructions);
+        drawRoutes(allRoutes, selectedRouteIndex);
+      }
+    }
+  }, [selectedRouteIndex, allRoutes]);
 
   const handleChangeTilemapStyle = (styleName) => {
     setTilemapStyle(styleName)
@@ -611,13 +742,34 @@ export default function App() {
 
       {/* CHẾ ĐỘ ROUTE - SIDEBAR BÊN TRÁI */}
       {mode === 'route' && (
-        <div className="search-ui-container absolute top-0 left-0 bottom-0 w-[400px] max-w-full bg-slate-50 z-30 shadow-[4px_0_24px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden">
-          {/* Header Xanh */}
-          <div className="bg-blue-600 pt-8 pb-4 px-4 relative flex-shrink-0">
-            <button 
-              onClick={handleStopDirection} 
-              className="absolute top-4 right-4 w-8 h-8 bg-white rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 shadow"
+        <>
+          {/* Nút Hiện Sidebar (khi đã ẩn) */}
+          {!isSidebarVisible && (
+            <button
+              onClick={() => setIsSidebarVisible(true)}
+              className="absolute z-40 top-4 left-4 w-11 h-11 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.15)] flex items-center justify-center text-blue-600 hover:bg-slate-50 transition-all border border-slate-100"
+              title="Hiện danh sách"
             >
+              <i className="fa-solid fa-list-ul text-lg"></i>
+            </button>
+          )}
+
+          <div className={`search-ui-container absolute top-0 left-0 bottom-0 w-[400px] max-w-full bg-slate-50 z-30 shadow-[4px_0_24px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden transition-transform duration-300 ${
+            isSidebarVisible ? 'translate-x-0' : '-translate-x-full'
+          }`}>
+            {/* Header Xanh */}
+            <div className="bg-blue-600 pt-8 pb-4 px-4 relative flex-shrink-0">
+              <button 
+                onClick={() => setIsSidebarVisible(false)} 
+                className="absolute top-4 left-4 w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+                title="Ẩn danh sách"
+              >
+                <i className="fa-solid fa-chevron-left text-[12px]"></i>
+              </button>
+              <button 
+                onClick={handleStopDirection} 
+                className="absolute top-4 right-4 w-8 h-8 bg-white rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 shadow"
+              >
               <i className="fa-solid fa-xmark"></i>
             </button>
             <div className="text-white text-[15px] font-medium mb-4">Phương tiện di chuyển</div>
@@ -768,6 +920,35 @@ export default function App() {
                         Phí cao tốc: <strong className="text-slate-700">{tollTotal > 0 ? `${tollTotal.toLocaleString('vi-VN')} đ` : '0 đ'}</strong>
                       </div>
                     )}
+
+                    {/* Alternative Routes List */}
+                    {allRoutes.length > 1 && (
+                      <div className="mt-4 border-t border-slate-100 pt-4 px-1 overflow-x-auto flex gap-3 no-scrollbar pb-2">
+                        {allRoutes.map((route, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedRouteIndex(idx)}
+                            className={`flex flex-col items-start p-3 rounded-xl border-2 transition-all shrink-0 min-w-[140px] ${
+                              selectedRouteIndex === idx 
+                                ? 'border-blue-600 bg-blue-50/50 shadow-sm' 
+                                : 'border-slate-100 bg-white hover:border-slate-300'
+                            }`}
+                          >
+                            <span className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${selectedRouteIndex === idx ? 'text-blue-600' : 'text-slate-400'}`}>
+                              Đường {idx + 1} {idx === 0 && '(Gợi ý)'}
+                            </span>
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-base font-bold text-slate-800">{(route.distance / 1000).toFixed(1)}</span>
+                              <span className="text-[11px] font-medium text-slate-500">km</span>
+                            </div>
+                            <span className="text-xs font-medium text-slate-600 mt-0.5">
+                              {Math.round(route.time / 60000)} phút
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     <button 
                       className="mt-4 w-full py-2 bg-slate-50 border border-slate-200 rounded-md text-[14px] font-medium text-slate-700 hover:bg-slate-100 flex items-center justify-center gap-2"
                       onClick={() => setShowSteps(!showSteps)}
@@ -796,7 +977,8 @@ export default function App() {
             
           </div>
         </div>
-      )}
+      </>
+    )}
 
       {/* Floating Buttons */}
       {mode === 'browse' && (
@@ -822,15 +1004,30 @@ export default function App() {
             >
               <i className="fa-solid fa-route mr-2"></i> Chỉ đường
             </button>
-            <button type="button" className="flex-1 bg-slate-100 text-slate-700 font-medium py-2.5 rounded-lg hover:bg-slate-200 transition-colors">
-               Lưu
+            <button 
+              type="button" 
+              className="flex-1 bg-slate-100 text-slate-700 font-medium py-2.5 rounded-lg hover:bg-slate-200 transition-colors"
+              onClick={() => {
+                setSelectedPlace(null);
+                setSearchQuery('');
+                if (placeMarkerRef.current) {
+                  placeMarkerRef.current.remove();
+                  placeMarkerRef.current = null;
+                }
+              }}
+            >
+               Tắt
             </button>
           </div>
         </div>
       )}
 
       {/* Map Style Controls */}
-      <div className="absolute z-20 bottom-8 left-4 flex flex-col gap-2 bg-white p-1.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.1)]">
+      <div className={`absolute z-40 flex flex-col gap-2 bg-white p-1.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300 ${
+        mode === 'route' 
+          ? 'top-24 right-4' 
+          : (selectedPlace ? 'bottom-48 left-4 sm:bottom-8' : 'bottom-8 left-4')
+      }`}>
         <button 
           className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${tilemapStyle === 'vectorDefault' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
           onClick={() => handleChangeTilemapStyle('vectorDefault')}
@@ -842,6 +1039,12 @@ export default function App() {
           onClick={() => handleChangeTilemapStyle('satellite')}
         >
           Raster
+        </button>
+        <button 
+          className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${showTraffic ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+          onClick={() => setShowTraffic(!showTraffic)}
+        >
+          Giao thông
         </button>
       </div>
       

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import vietmapgl from '@vietmap/vietmap-gl-js/dist/vietmap-gl.js'
 import '@vietmap/vietmap-gl-js/dist/vietmap-gl.css'
-import './App.css'
 import { apiService } from './services/api'
 
 const DEFAULT_CENTER = [106.70098, 10.77689]
@@ -670,7 +669,7 @@ export default function App() {
   }
 
   return (
-    <div className="screen relative overflow-hidden h-screen w-full font-sans bg-slate-50">
+    <div className="relative overflow-hidden h-screen w-full font-sans bg-slate-50">
       <div ref={mapContainerRef} className="absolute inset-0 z-0" />
 
       {!apiKey && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg">Thiếu VITE_VIETMAP_API_KEY trong .env.</div>}
@@ -678,18 +677,17 @@ export default function App() {
 
       {/* CHẾ ĐỘ BROWSE - THANH TÌM KIẾM */}
       {mode === 'browse' && (
-        <div className="search-ui-container absolute z-20 top-[max(16px,env(safe-area-inset-top))] left-4 flex gap-3">
-          <button className="w-11 h-11 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.12)] flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-colors shrink-0">
-            <i className="fa-solid fa-bars text-lg"></i>
-          </button>
-
-          <div className="relative flex flex-col w-[360px] max-w-[calc(100vw-80px)]">
-            <div className={`relative flex items-center bg-white shadow-[0_2px_8px_rgba(0,0,0,0.12)] z-10 ${
+        <div className="search-ui-container absolute z-20 top-[max(10px,env(safe-area-inset-top))] left-3 right-3 md:left-4 md:right-auto">
+          <div className="relative flex flex-col w-full md:w-[390px] max-w-full">
+            <div className={`relative flex items-center bg-white shadow-[0_2px_12px_rgba(0,0,0,0.18)] z-10 rounded-full border border-slate-100 ${
               isSuggestOpen && suggestions.length > 0 && searchQuery ? 'rounded-t-2xl rounded-b-none border-b border-slate-100' : 'rounded-2xl'
             } ${focusedInput === 'search' ? 'ring-2 ring-blue-500' : ''}`}>
-              <i className="fa-solid fa-magnifying-glass absolute left-4 text-slate-400 text-[15px] pointer-events-none"></i>
+              <button className="absolute left-1.5 w-9 h-9 rounded-full bg-transparent text-slate-500 hover:bg-slate-100 transition-colors">
+                <i className="fa-solid fa-bars text-[15px]"></i>
+              </button>
+              <i className="fa-solid fa-magnifying-glass absolute left-12 text-slate-400 text-[15px] pointer-events-none"></i>
               <input
-                className="w-full bg-transparent border-none py-3 pl-11 pr-10 text-[15px] outline-none text-slate-800 placeholder-slate-400"
+                className="w-full bg-transparent border-none py-3 pl-[70px] pr-11 text-[15px] outline-none text-slate-800 placeholder-slate-400"
                 value={searchQuery}
                 onFocus={() => setFocusedInput('search')}
                 onChange={(e) => {
@@ -702,7 +700,7 @@ export default function App() {
                 placeholder={searchQuery ? '' : 'Tìm kiếm địa điểm'}
               />
               {searchQuery && (
-                <button className="absolute right-3 p-1 text-slate-400 hover:text-slate-600 bg-transparent border-none cursor-pointer" onClick={() => { setSearchQuery(''); setSuggestions([]); }}>
+                <button className="absolute right-3 p-1 text-slate-400 hover:text-slate-600 bg-transparent border-none cursor-pointer" onClick={() => { setSearchQuery(''); setSuggestions([]); setSelectedPlace(null) }}>
                   <i className="fa-solid fa-xmark text-lg"></i>
                 </button>
               )}
@@ -747,41 +745,43 @@ export default function App() {
           {!isSidebarVisible && (
             <button
               onClick={() => setIsSidebarVisible(true)}
-              className="absolute z-40 top-4 left-4 w-11 h-11 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.15)] flex items-center justify-center text-blue-600 hover:bg-slate-50 transition-all border border-slate-100"
+              className="absolute z-40 top-4 left-4 md:top-4 md:left-4 w-10 h-10 md:w-11 md:h-11 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.15)] flex items-center justify-center text-blue-600 hover:bg-slate-50 transition-all border border-slate-100"
               title="Hiện danh sách"
             >
               <i className="fa-solid fa-list-ul text-lg"></i>
             </button>
           )}
 
-          <div className={`search-ui-container absolute top-0 left-0 bottom-0 w-[400px] max-w-full bg-slate-50 z-30 shadow-[4px_0_24px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden transition-transform duration-300 ${
-            isSidebarVisible ? 'translate-x-0' : '-translate-x-full'
+          <div className={`search-ui-container absolute left-0 right-0 bottom-0 h-[82dvh] md:h-auto md:top-0 md:bottom-0 md:right-auto w-full md:w-[400px] max-w-full bg-slate-50 z-30 shadow-[0_-8px_24px_rgba(0,0,0,0.16)] md:shadow-[4px_0_24px_rgba(0,0,0,0.1)] rounded-t-3xl md:rounded-none flex flex-col overflow-hidden transition-transform duration-300 ${
+            isSidebarVisible ? 'translate-y-0 md:translate-x-0' : 'translate-y-full md:-translate-x-full'
           }`}>
             {/* Header Xanh */}
-            <div className="bg-blue-600 pt-8 pb-4 px-4 relative flex-shrink-0">
+            <div className="bg-white pt-3 md:pt-8 pb-3 md:pb-4 px-4 relative flex-shrink-0 border-b border-slate-200">
+              <div className="w-10 h-1 rounded-full bg-slate-300 mx-auto mb-3 md:hidden"></div>
               <button 
                 onClick={() => setIsSidebarVisible(false)} 
-                className="absolute top-4 left-4 w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+                className="absolute top-3 md:top-4 left-4 w-8 h-8 bg-slate-100 md:bg-white/10 rounded-full flex items-center justify-center text-slate-700 md:text-white hover:bg-slate-200 md:hover:bg-white/20 transition-colors"
                 title="Ẩn danh sách"
               >
-                <i className="fa-solid fa-chevron-left text-[12px]"></i>
+                <i className="fa-solid fa-chevron-down text-[12px] md:hidden"></i>
+                <i className="fa-solid fa-chevron-left text-[12px] hidden md:block"></i>
               </button>
               <button 
                 onClick={handleStopDirection} 
-                className="absolute top-4 right-4 w-8 h-8 bg-white rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 shadow"
+                className="absolute top-3 md:top-4 right-4 w-8 h-8 bg-slate-100 md:bg-white rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-200 md:hover:bg-slate-100 shadow"
               >
               <i className="fa-solid fa-xmark"></i>
             </button>
-            <div className="text-white text-[15px] font-medium mb-4">Phương tiện di chuyển</div>
+            <div className="text-slate-700 md:text-white text-[15px] font-medium mb-3 md:mb-4 text-center md:text-left">Phương tiện di chuyển</div>
             
-            <div className="flex gap-2 bg-white/10 p-1.5 rounded-lg shadow-sm">
+            <div className="flex gap-2 bg-slate-100 md:bg-white/10 p-1.5 rounded-lg shadow-sm">
               {VEHICLES.map((item) => (
                 <button
                   key={item.key}
                   className={`flex-1 py-2.5 rounded-md flex items-center justify-center gap-2 text-[14px] font-medium transition-colors ${
                     item.key === vehicle 
                       ? 'bg-slate-900 text-white shadow-sm' 
-                      : 'text-white hover:bg-white/20'
+                      : 'text-slate-600 md:text-white hover:bg-slate-200 md:hover:bg-white/20'
                   }`}
                   onClick={() => setVehicle(item.key)}
                 >
@@ -984,7 +984,7 @@ export default function App() {
       {mode === 'browse' && (
         <button
           type="button"
-          className="absolute z-20 top-20 left-4 w-11 h-11 bg-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.15)] flex items-center justify-center text-blue-600 hover:bg-slate-50 transition-colors"
+          className="absolute z-20 bottom-[max(84px,calc(env(safe-area-inset-bottom)+72px))] md:top-20 md:bottom-auto left-3 md:left-4 w-10 h-10 md:w-11 md:h-11 bg-white rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.18)] flex items-center justify-center text-blue-600 hover:bg-slate-50 transition-colors"
           onClick={handleOpenDirection}
           title="Tìm đường"
         >
@@ -993,7 +993,7 @@ export default function App() {
       )}
 
       {mode === 'browse' && selectedPlace && (
-        <div className="absolute z-20 bottom-8 left-1/2 -translate-x-1/2 w-[340px] bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-4 flex flex-col gap-2">
+        <div className="absolute z-20 left-0 right-0 md:left-1/2 md:right-auto md:-translate-x-1/2 bottom-0 md:bottom-8 w-auto md:w-[360px] bg-white md:rounded-2xl rounded-t-3xl shadow-[0_-6px_24px_rgba(0,0,0,0.15)] md:shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-4 pb-[max(16px,env(safe-area-inset-bottom))] md:pb-4 flex flex-col gap-2">
           <h3 className="m-0 text-lg font-semibold text-slate-800">{selectedPlace.display}</h3>
           <p className="m-0 text-[14px] text-slate-500">{selectedPlace.address}</p>
           <div className="flex gap-2 mt-2">
@@ -1023,25 +1023,25 @@ export default function App() {
       )}
 
       {/* Map Style Controls */}
-      <div className={`absolute z-40 flex flex-col gap-2 bg-white p-1.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300 ${
+      <div className={`absolute z-40 flex flex-col gap-1.5 md:gap-2 bg-white p-1.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.16)] transition-all duration-300 ${
         mode === 'route' 
-          ? 'top-24 right-4' 
-          : (selectedPlace ? 'bottom-48 left-4 sm:bottom-8' : 'bottom-8 left-4')
+          ? 'top-4 right-3 md:top-24 md:right-4' 
+          : (selectedPlace ? 'bottom-[max(184px,calc(env(safe-area-inset-bottom)+176px))] right-3 md:bottom-8 md:left-4 md:right-auto' : 'bottom-[max(24px,calc(env(safe-area-inset-bottom)+12px))] right-3 md:bottom-8 md:left-4 md:right-auto')
       }`}>
         <button 
-          className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${tilemapStyle === 'vectorDefault' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+          className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[12px] md:text-[13px] font-medium transition-colors ${tilemapStyle === 'vectorDefault' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
           onClick={() => handleChangeTilemapStyle('vectorDefault')}
         >
           Vector
         </button>
         <button 
-          className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${tilemapStyle === 'satellite' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+          className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[12px] md:text-[13px] font-medium transition-colors ${tilemapStyle === 'satellite' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
           onClick={() => handleChangeTilemapStyle('satellite')}
         >
           Raster
         </button>
         <button 
-          className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${showTraffic ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+          className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[12px] md:text-[13px] font-medium transition-colors ${showTraffic ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
           onClick={() => setShowTraffic(!showTraffic)}
         >
           Giao thông

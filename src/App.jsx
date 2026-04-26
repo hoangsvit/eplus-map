@@ -75,6 +75,7 @@ export default function App() {
   const [showTraffic, setShowTraffic] = useState(true)
   const [trafficStyle, setTrafficStyle] = useState(null)
   const [isSidebarVisible, setIsSidebarVisible] = useState(true)
+  const [isMapControlOpen, setIsMapControlOpen] = useState(false)
 
   // Track active state for Map click events without re-binding
   const activeStateRef = useRef({ mode, focusedInput, focusedPointIndex, routePoints, searchQuery })
@@ -98,6 +99,10 @@ export default function App() {
         setIsSuggestOpen(false);
         setFocusedInput(null);
         setFocusedPointIndex(null);
+      }
+
+      if (!e.target.closest('.map-control-container')) {
+        setIsMapControlOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -1024,29 +1029,42 @@ export default function App() {
       )}
 
       {/* Map Style Controls */}
-      <div className={`absolute z-40 flex flex-col gap-1.5 md:gap-2 bg-white p-1.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300 ${
+      <div className={`map-control-container absolute z-40 transition-all duration-300 ${
         mode === 'route' 
           ? 'top-4 right-3 md:top-24 md:right-4' 
           : (selectedPlace ? 'bottom-44 right-3 md:bottom-8 md:left-4 md:right-auto' : 'bottom-24 right-3 md:bottom-8 md:left-4 md:right-auto')
       }`}>
-        <button 
-          className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[12px] md:text-[13px] font-medium transition-colors ${tilemapStyle === 'vectorDefault' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
-          onClick={() => handleChangeTilemapStyle('vectorDefault')}
+        <button
+          type="button"
+          className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.12)] flex items-center justify-center text-slate-700 hover:bg-slate-50"
+          onClick={() => setIsMapControlOpen((prev) => !prev)}
+          title="Tùy chọn bản đồ"
         >
-          Vector
+          <i className="fa-solid fa-layer-group"></i>
         </button>
-        <button 
-          className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[12px] md:text-[13px] font-medium transition-colors ${tilemapStyle === 'satellite' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
-          onClick={() => handleChangeTilemapStyle('satellite')}
-        >
-          Raster
-        </button>
-        <button 
-          className={`px-2.5 md:px-3 py-1.5 rounded-lg text-[12px] md:text-[13px] font-medium transition-colors ${showTraffic ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
-          onClick={() => setShowTraffic(!showTraffic)}
-        >
-          Giao thông
-        </button>
+
+        {isMapControlOpen && (
+          <div className="absolute right-0 mt-2 w-[170px] flex flex-col gap-1.5 md:gap-2 bg-white p-1.5 rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.15)] border border-slate-100">
+            <button 
+              className={`px-2.5 md:px-3 py-1.5 rounded-lg text-left text-[12px] md:text-[13px] font-medium transition-colors ${tilemapStyle === 'vectorDefault' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+              onClick={() => handleChangeTilemapStyle('vectorDefault')}
+            >
+              <i className="fa-solid fa-map mr-2"></i> Vector
+            </button>
+            <button 
+              className={`px-2.5 md:px-3 py-1.5 rounded-lg text-left text-[12px] md:text-[13px] font-medium transition-colors ${tilemapStyle === 'satellite' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+              onClick={() => handleChangeTilemapStyle('satellite')}
+            >
+              <i className="fa-solid fa-satellite mr-2"></i> Raster
+            </button>
+            <button 
+              className={`px-2.5 md:px-3 py-1.5 rounded-lg text-left text-[12px] md:text-[13px] font-medium transition-colors ${showTraffic ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`} 
+              onClick={() => setShowTraffic(!showTraffic)}
+            >
+              <i className="fa-solid fa-road mr-2"></i> Giao thông
+            </button>
+          </div>
+        )}
       </div>
       
     </div>

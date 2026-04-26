@@ -13,7 +13,31 @@ export const apiService = {
     const response = await fetch(`${API_BASE}/api/autocomplete/v4?${params.toString()}`)
     if (!response.ok) throw new Error('Không thể tải gợi ý.')
     const data = await response.json()
-    return Array.isArray(data) ? data : []
+    if (!Array.isArray(data)) return []
+
+    // Enriched suggestions với địa chỉ cũ
+    const enrichedData = await Promise.all(
+      data.map(async (item) => {
+        try {
+          // Migrate address để lấy định dạng cũ
+          const migrated = await this.migrateAddressNewToOld(item.display || item.address, apiKey)
+          return {
+            ...item,
+            oldAddress: migrated.address,
+            oldName: migrated.name,
+          }
+        } catch {
+          // Nếu migration thất bại, chỉ trả về suggestion ban đầu
+          return {
+            ...item,
+            oldAddress: null,
+            oldName: null,
+          }
+        }
+      }),
+    )
+
+    return enrichedData
   },
 
   // Lấy chi tiết địa điểm theo ref_id
@@ -93,6 +117,77 @@ export const apiService = {
     } catch {
       // Không chặn hiển thị tuyến đường nếu API phí cao tốc lỗi tạm thời
       return []
+    }
+  },
+
+  // Tilemap Styles - Lấy URL của các kiểu bản đồ khác nhau
+  getTilemapStyles(apiKey) {
+    return {
+      // Vector styles
+      vectorDefault: `${API_BASE}/maps/styles/tm/style.json?apikey=${apiKey}`,
+      vectorLight: `${API_BASE}/maps/styles/lm/style.json?apikey=${apiKey}`,
+      vectorDark: `${API_BASE}/maps/styles/dm/style.json?apikey=${apiKey}`,
+      vectorHybrid: `${API_BASE}/maps/styles/hm/style.json?apikey=${apiKey}`,
+      
+      // Traffic overlay
+      traffic: `${API_BASE}/maps/styles/tf/style.json?apikey=${apiKey}`,
+      
+      // Satellite
+      satellite: `${API_BASE}/maps/tiles/st/{z}/{x}/{y}.png?apikey=${apiKey}`,
+    }
+  },
+
+  // Lấy URL một kiểu bản đồ cụ thể
+  getTilemapStyleUrl(styleName, apiKey) {
+    const styles = this.getTilemapStyles(apiKey)
+    return styles[styleName] || styles.vectorDefault
+  },
+
+  // Chuyển đổi địa chỉ từ định dạng cũ sang mới (Migrate Address API)
+  async migrateAddressOldToNew(addressText, focus = null, apiKey) {
+    const params = new URLSearchParams({
+      apikey: apiKey,
+      text: addressText,
+      migrate_type: 1,
+    })
+
+    if (focus) {
+      params.append('focus', focus)
+    }
+
+    const response = await fetch(`${API_BASE}/api/migrate-address/v3?${params.toString()}`)
+    if (!response.ok) throw new Error('Không thể chuyển đổi địa chỉ.')
+
+    const data = await response.json()
+    return {
+      address: data.address || '',
+      name: data.name || '',
+      display: data.display || '',
+      boundaries: Array.isArray(data.boundaries) ? data.boundaries : [],
+    }
+  },
+
+  // Chuyển đổi địa chỉ từ định dạng mới sang cũ (Migrate Address API)
+  async migrateAddressNewToOld(addressText, apiKey, focus = null) {
+    const params = new URLSearchParams({
+      apikey: apiKey,
+      text: addressText,
+      migrate_type: 2,
+    })
+
+    if (focus) {
+      params.append('focus', focus)
+    }
+
+    const response = await fetch(`${API_BASE}/api/migrate-address/v3?${params.toString()}`)
+    if (!response.ok) throw new Error('Không thể chuyển đổi địa chỉ.')
+
+    const data = await response.json()
+    return {
+      address: data.address || '',
+      name: data.name || '',
+      display: data.display || '',
+      boundaries: Array.isArray(data.boundaries) ? data.boundaries : [],
     }
   },
 }

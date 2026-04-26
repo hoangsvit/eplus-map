@@ -14,6 +14,12 @@ const VEHICLES = [
   { key: 'foot', icon: 'fa-solid fa-person-walking' },
   { key: 'motorcycle', icon: 'fa-solid fa-motorcycle' },
 ]
+const TILEMAP_STYLES = [
+  { key: 'vectorDefault', label: 'Bình thường', icon: 'fa-solid fa-map' },
+  { key: 'vectorLight', label: 'Sáng', icon: 'fa-solid fa-sun' },
+  { key: 'vectorDark', label: 'Tối', icon: 'fa-solid fa-moon' },
+  { key: 'vectorHybrid', label: 'Vệ tinh', icon: 'fa-solid fa-satellite' },
+]
 
 function toLngLat(point) {
   if (!Array.isArray(point) || point.length < 2) return null
@@ -40,9 +46,10 @@ export default function App() {
   const routeActionRef = useRef(null)
 
   const apiKey = useMemo(() => import.meta.env.VITE_VIETMAP_API_KEY || '', [])
+  const [tilemapStyle, setTilemapStyle] = useState('vectorDefault')
   const styleUrl = useMemo(
-    () => `https://maps.vietmap.vn/maps/styles/tm/style.json?apikey=${apiKey}`,
-    [apiKey],
+    () => apiService.getTilemapStyleUrl(tilemapStyle, apiKey),
+    [tilemapStyle, apiKey],
   )
 
   const [mode, setMode] = useState('browse')
@@ -311,6 +318,14 @@ export default function App() {
     }
   }
 
+  const handleChangeTilemapStyle = (styleName) => {
+    setTilemapStyle(styleName)
+    if (mapRef.current) {
+      const newStyleUrl = apiService.getTilemapStyleUrl(styleName, apiKey)
+      mapRef.current.setStyle(newStyleUrl)
+    }
+  }
+
   const handleStopDirection = () => {
     const destination = selectedEnd || selectedPlace
     setMode('browse')
@@ -404,6 +419,20 @@ export default function App() {
           <i className="fa-solid fa-route" aria-hidden="true" />
         </button>
       )}
+
+      <div className="tilemap-styles-selector">
+        {TILEMAP_STYLES.map((item) => (
+          <button
+            key={item.key}
+            className={item.key === tilemapStyle ? 'active' : ''}
+            type="button"
+            onClick={() => handleChangeTilemapStyle(item.key)}
+            title={item.label}
+          >
+            <i className={item.icon} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
 
       {mode === 'route' && (
         <div className="route-header">
